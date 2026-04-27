@@ -15,6 +15,8 @@ export type VideoSavePayload = {
   id?: string;
   slug?: string;
   status?: ContentStatus;
+  createdAt?: string;
+  updatedAt?: string;
   title?: string;
   focusObject?: string;
   selectedHook?: string;
@@ -48,6 +50,35 @@ export type VideoSavePayload = {
   relatedQuestions?: string[];
   seoKeywords?: string[];
   generatedImageUrls?: string[];
+};
+
+type SupabaseVideoRow = {
+  id: string;
+  title: string | null;
+  description: string | null;
+  video_url: string | null;
+  thumbnail_url: string | null;
+  published_date: string | null;
+  content_type: VideoType | null;
+  category: ContentTopic | null;
+  slug: string | null;
+  status: ContentStatus | null;
+  selected_hook: string | null;
+  selected_thumbnail_text: string | null;
+  tags: string[] | null;
+  series: string | null;
+  is_featured: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type SupabaseDeepDiveRow = {
+  video_id: string;
+  title: string | null;
+  slug: string | null;
+  content: string | null;
+  meta_description: string | null;
+  status: ContentStatus | null;
 };
 
 type RawVideoRecord = VideoSavePayload & {
@@ -105,6 +136,8 @@ const expectedVideoColumns = [
   "tags",
   "series",
   "is_featured",
+  "created_at",
+  "updated_at",
 ];
 const expectedDeepDiveColumns = [
   "id",
@@ -225,6 +258,37 @@ function toRecord(body: VideoSavePayload, status: ContentStatus, existing?: RawV
     relatedQuestions: asStringList(body.relatedQuestions),
     seoKeywords: asStringList(body.seoKeywords),
     generatedImageUrls: asStringList(body.generatedImageUrls),
+  };
+}
+
+function supabaseRowToDraft(row: SupabaseVideoRow, deepDive?: SupabaseDeepDiveRow): VideoSavePayload {
+  const title = asCleanString(row.title);
+  const publishedDate = asCleanString(row.published_date);
+
+  return {
+    id: row.id,
+    supabaseId: row.id,
+    slug: asCleanString(row.slug) || slugify(title),
+    status: row.status ?? "draft",
+    createdAt: row.created_at ?? "",
+    updatedAt: row.updated_at ?? "",
+    title,
+    description: asCleanString(row.description),
+    videoUrl: asCleanString(row.video_url),
+    publishedDate,
+    contentType: row.content_type ?? "short",
+    category: row.category ?? "moon",
+    videoId: extractYouTubeId(asCleanString(row.video_url)),
+    thumbnail: asCleanString(row.thumbnail_url),
+    selectedHook: asCleanString(row.selected_hook),
+    selectedThumbnailText: asCleanString(row.selected_thumbnail_text),
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    series: asCleanString(row.series),
+    featured: Boolean(row.is_featured),
+    relatedArticleSlug: asCleanString(deepDive?.slug),
+    deepDiveTitle: asCleanString(deepDive?.title),
+    deepDiveContent: asCleanString(deepDive?.content),
+    deepDiveMetaDescription: asCleanString(deepDive?.meta_description),
   };
 }
 
@@ -458,6 +522,146 @@ async function saveSupabaseVideo(record: RawVideoRecord, status: ContentStatus) 
     throw new Error(error.message);
   }
   return data as PersistedSupabaseVideo;
+}
+
+export async function listDraftVideos() {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdminClient();
+    const { data: videosData, error } = await supabase
+      .from("videos")
+      .select(expectedVideoColumns.join(","))
+      .eq("status", "draft")
+      .order("updated_at", { ascending: false });
+
+    if (error) {
+      console.error("[supabase] draft list failed", { error: error.message });
+      throw new Error(error.message);
+    }
+
+    const rows = (videosData ?? []) as unknown as SupabaseVideoRow[];
+    const videoIds = rows.map((row) => row.id);
+    let deepDives = new Map<string, SupabaseDeepDiveRow>();
+
+    if (videoIds.length > 0) {
+      const { data: deepDiveData, error: deepDiveError } = await supabase
+        .from("deep_dives")
+        .select("video_id,title,slug,content,meta_description,status")
+        .in("video_id", videoIds);
+
+      if (deepDiveError) {
+        console.error("[supabase] draft deep dive list failed", { error: deepDiveError.message });
+      } else {
+        deepDives = new Map(
+          ((deepDiveData ?? []) as unknown as SupabaseDeepDiveRow[]).map((deepDive) => [deepDive.video_id, deepDive]),
+        );
+      }
+    }
+
+    return rows.map((row) => supabaseRowToDraft(row, deepDives.get(row.id)));
+  }
+
+  const file = await readFile(videosPath, "utf8");
+  const videos = JSON.parse(file) as RawVideoRecord[];
+  return videos
+    .filter((video) => video.status === "draft")
+    .map((video) => ({
+      ...video,
+      videoUrl: asCleanString(video.videoUrl) || asCleanString(video.youtubeUrl),
+      publishedDate: asCleanString(video.publishedDate) || asCleanString(video.date),
+      contentType: video.contentType ?? video.type,
+      category: video.category ?? video.topic,
+      thumbnail: asCleanString(video.thumbnail),
+    }));
+}
+
+export async function deleteDraftVideo(id: string) {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdminClient();
+    const { data: existing, error: selectError } = await supabase
+      .from("videos")
+      .select(expectedVideoColumns.join(","))
+      .eq("id", id)
+      .eq("status", "draft")
+      .maybeSingle();
+
+    if (selectError) {
+      console.error("[supabase] draft delete lookup failed", { id, error: selectError.message });
+      throw new Error(selectError.message);
+    }
+
+    if (!existing) {
+      throw new Error("Draft not found.");
+    }
+
+    const { error: deepDiveError } = await supabase
+      .from("deep_dives")
+      .delete()
+      .eq("video_id", id);
+
+    if (deepDiveError) {
+      console.error("[supabase] draft deep dive delete failed", { id, error: deepDiveError.message });
+      throw new Error(deepDiveError.message);
+    }
+
+    const { error } = await supabase
+      .from("videos")
+      .delete()
+      .eq("id", id)
+      .eq("status", "draft");
+
+    if (error) {
+      console.error("[supabase] draft delete failed", { id, error: error.message });
+      throw new Error(error.message);
+    }
+
+    revalidatePublicContent();
+    return supabaseRowToDraft(existing as unknown as SupabaseVideoRow);
+  }
+
+  const file = await readFile(videosPath, "utf8");
+  const videos = JSON.parse(file) as RawVideoRecord[];
+  const index = videos.findIndex((video) => video.id === id && video.status === "draft");
+
+  if (index === -1) {
+    throw new Error("Draft not found.");
+  }
+
+  const [deletedVideo] = videos.splice(index, 1);
+  await writeFile(videosPath, `${JSON.stringify(videos, null, 2)}\n`, "utf8");
+  return deletedVideo;
+}
+
+export async function publishDraftVideo(id: string) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is required to publish saved drafts.");
+  }
+
+  const supabase = getSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("videos")
+    .update({ status: "published" })
+    .eq("id", id)
+    .eq("status", "draft")
+    .select(expectedVideoColumns.join(","))
+    .single();
+
+  if (error) {
+    console.error("[supabase] draft publish failed", { id, error: error.message });
+    throw new Error(error.message);
+  }
+
+  const { error: deepDiveError } = await supabase
+    .from("deep_dives")
+    .update({ status: "published" })
+    .eq("video_id", id);
+
+  if (deepDiveError) {
+    console.error("[supabase] draft deep dive publish failed", { id, error: deepDiveError.message });
+    throw new Error(deepDiveError.message);
+  }
+
+  revalidatePublicContent();
+  return supabaseRowToDraft(data as unknown as SupabaseVideoRow);
 }
 
 function revalidatePublicContent() {

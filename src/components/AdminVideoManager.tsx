@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { Check, ChevronDown, Copy, FileJson, Sparkles, TriangleAlert, WandSparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronDown, Copy, FileJson, Pencil, RefreshCw, Sparkles, Trash2, TriangleAlert, UploadCloud, WandSparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   articles,
   contentTopics,
@@ -17,6 +17,7 @@ import {
 
 type VideoManagerState = {
   id: string;
+  supabaseId: string;
   slug: string;
   status: ContentStatus;
   createdAt: string;
@@ -56,6 +57,7 @@ type VideoManagerState = {
 
 type GeneratedVideoJson = {
   id: string;
+  supabaseId?: string;
   slug: string;
   status: ContentStatus;
   createdAt: string;
@@ -110,6 +112,7 @@ type GeneratedPreview = {
 
 const initialState: VideoManagerState = {
   id: "",
+  supabaseId: "",
   slug: "",
   status: "draft",
   createdAt: "",
@@ -151,6 +154,7 @@ const VIDEO_MANAGER_DRAFT_KEY = "vanta-orbit-video-manager-draft";
 
 type SavedVideoIdea = Partial<{
   id: string;
+  supabaseId: string;
   slug: string;
   status: ContentStatus;
   createdAt: string;
@@ -210,6 +214,7 @@ function createInitialStateFromDraft(draft: SavedVideoIdea | null): VideoManager
   return {
     ...initialState,
     id: draft.id ?? initialState.id,
+    supabaseId: draft.supabaseId ?? initialState.supabaseId,
     slug: draft.slug ?? initialState.slug,
     status: draft.status ?? initialState.status,
     createdAt: draft.createdAt ?? initialState.createdAt,
@@ -509,6 +514,10 @@ function JsonBlock({
 export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) {
   const [loadedDraft, setLoadedDraft] = useState(false);
   const [formState, setFormState] = useState<VideoManagerState>(initialState);
+  const [supabaseDrafts, setSupabaseDrafts] = useState<SavedVideoIdea[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsError, setDraftsError] = useState("");
+  const [draftActionId, setDraftActionId] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   const [generated, setGenerated] = useState<GeneratedPreview | null>(null);
   const [aiContextOpen, setAiContextOpen] = useState(false);
@@ -518,6 +527,35 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
   const [savingAction, setSavingAction] = useState<ContentStatus | null>(null);
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
+
+  const loadSupabaseDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    setDraftsError("");
+
+    try {
+      const response = await fetch("/admin/api/videos/draft", { method: "GET" });
+      const responseText = await response.text();
+      let result: { success?: boolean; drafts?: SavedVideoIdea[]; error?: string };
+
+      try {
+        result = responseText
+          ? JSON.parse(responseText)
+          : { success: false, error: "Draft API returned an empty response." };
+      } catch {
+        result = { success: false, error: responseText || "Draft API returned a non-JSON response." };
+      }
+
+      if (!response.ok || result.success === false) {
+        throw new Error(result.error || "Drafts could not be loaded.");
+      }
+
+      setSupabaseDrafts(Array.isArray(result.drafts) ? result.drafts : []);
+    } catch (error) {
+      setDraftsError(error instanceof Error ? error.message : "Drafts could not be loaded.");
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const restoreDraft = window.setTimeout(() => {
@@ -531,6 +569,14 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
 
     return () => window.clearTimeout(restoreDraft);
   }, []);
+
+  useEffect(() => {
+    const loadDrafts = window.setTimeout(() => {
+      void loadSupabaseDrafts();
+    }, 0);
+
+    return () => window.clearTimeout(loadDrafts);
+  }, [loadSupabaseDrafts]);
 
   const knownArticleSlugs = useMemo(() => new Set(articles.map((article) => article.slug)), []);
   const existingFeaturedVideos = useMemo(() => videos.filter((video) => video.featured), []);
@@ -599,6 +645,90 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
 
   const updateField = <K extends keyof VideoManagerState>(key: K, value: VideoManagerState[K]) => {
     setFormState((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleLoadDraft = (draft: SavedVideoIdea) => {
+    setFormState(createInitialStateFromDraft(draft));
+    setGenerated(null);
+    setErrors([]);
+    setSaveError("");
+    setSaveMessage(`Loaded draft "${draft.title || "Untitled"}" for editing.`);
+    setAiContextOpen(true);
+    setLoadedDraft(true);
+  };
+
+  const handleDeleteDraft = async (draft: SavedVideoIdea) => {
+    const id = draft.supabaseId || draft.id;
+    if (!id) return;
+    if (!window.confirm(`Delete draft "${draft.title || "Untitled"}"?`)) return;
+
+    setDraftActionId(id);
+    setDraftsError("");
+
+    try {
+      const response = await fetch(`/admin/api/videos/draft/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const responseText = await response.text();
+      let result: { success?: boolean; error?: string };
+
+      try {
+        result = responseText
+          ? JSON.parse(responseText)
+          : { success: false, error: "Delete API returned an empty response." };
+      } catch {
+        result = { success: false, error: responseText || "Delete API returned a non-JSON response." };
+      }
+
+      if (!response.ok || result.success === false) {
+        throw new Error(result.error || "Draft could not be deleted.");
+      }
+
+      setSupabaseDrafts((current) => current.filter((item) => (item.supabaseId || item.id) !== id));
+      if ((formState.supabaseId || formState.id) === id) {
+        setFormState(initialState);
+        setGenerated(null);
+      }
+      setSaveMessage("Draft deleted.");
+    } catch (error) {
+      setDraftsError(error instanceof Error ? error.message : "Draft could not be deleted.");
+    } finally {
+      setDraftActionId("");
+    }
+  };
+
+  const handlePublishDraft = async (draft: SavedVideoIdea) => {
+    const id = draft.supabaseId || draft.id;
+    if (!id) return;
+
+    setDraftActionId(id);
+    setDraftsError("");
+
+    try {
+      const response = await fetch(`/admin/api/videos/draft/${encodeURIComponent(id)}/publish`, { method: "POST" });
+      const responseText = await response.text();
+      let result: { success?: boolean; error?: string };
+
+      try {
+        result = responseText
+          ? JSON.parse(responseText)
+          : { success: false, error: "Publish API returned an empty response." };
+      } catch {
+        result = { success: false, error: responseText || "Publish API returned a non-JSON response." };
+      }
+
+      if (!response.ok || result.success === false) {
+        throw new Error(result.error || "Draft could not be published.");
+      }
+
+      setSupabaseDrafts((current) => current.filter((item) => (item.supabaseId || item.id) !== id));
+      setSaveMessage(`Published "${draft.title || "draft"}".`);
+      if ((formState.supabaseId || formState.id) === id) {
+        setFormState((current) => ({ ...current, status: "published" }));
+      }
+    } catch (error) {
+      setDraftsError(error instanceof Error ? error.message : "Draft could not be published.");
+    } finally {
+      setDraftActionId("");
+    }
   };
 
   const handleGenerateDeepDive = async () => {
@@ -672,6 +802,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
       || (trimmedDeepDiveTitle ? slugify(trimmedDeepDiveTitle) : "");
     const videoJson: GeneratedVideoJson = {
       id: generatedVideoId,
+      supabaseId: formState.supabaseId.trim() || undefined,
       slug,
       status,
       createdAt: formState.createdAt || now,
@@ -808,6 +939,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
       setFormState((current) => ({
         ...current,
         id: result.video?.id ?? preview.video.id,
+        supabaseId: result.video?.supabaseId ?? current.supabaseId,
         slug: result.video?.slug ?? preview.video.slug,
         status: result.video?.status ?? status,
         createdAt: result.video?.createdAt ?? preview.video.createdAt,
@@ -823,6 +955,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
         ? `Published to ${storageLabel}. Public pages only use published entries.`
         : `Draft saved to ${storageLabel}. It stays hidden from public pages.`;
       setSaveMessage(result.warning ? `${baseMessage} ${result.warning}` : baseMessage);
+      void loadSupabaseDrafts();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Save failed.");
     } finally {
@@ -861,6 +994,92 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
             Saved generator idea loaded. Edit it here, add the real video URL when ready, then save a draft or publish.
           </div>
         ) : null}
+
+        <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-200">
+              Supabase drafts
+            </p>
+            <button
+              type="button"
+              onClick={() => void loadSupabaseDrafts()}
+              disabled={draftsLoading}
+              className="inline-flex size-9 items-center justify-center rounded-full border border-white/12 bg-black/30 text-zinc-100 transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Refresh drafts"
+            >
+              <RefreshCw className={`size-4 ${draftsLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+          {draftsError ? (
+            <p className="mt-3 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-3 text-xs leading-5 text-rose-100">
+              {draftsError}
+            </p>
+          ) : null}
+          <div className="mt-4 space-y-3">
+            {draftsLoading && supabaseDrafts.length === 0 ? (
+              <p className="rounded-2xl border border-white/8 bg-black/25 p-3 text-sm text-zinc-300">
+                Loading drafts...
+              </p>
+            ) : null}
+            {!draftsLoading && supabaseDrafts.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-white/12 bg-black/25 p-3 text-sm leading-6 text-zinc-300">
+                No saved Supabase drafts yet.
+              </p>
+            ) : null}
+            {supabaseDrafts.map((draft) => {
+              const id = draft.supabaseId || draft.id || draft.slug || draft.title || "draft";
+              const isBusy = draftActionId === id;
+              const isCurrent = (formState.supabaseId || formState.id) === (draft.supabaseId || draft.id);
+
+              return (
+                <div
+                  key={id}
+                  className={`rounded-2xl border p-3 transition ${
+                    isCurrent
+                      ? "border-violet-200/50 bg-violet-400/10"
+                      : "border-white/10 bg-black/30"
+                  }`}
+                >
+                  <p className="line-clamp-2 text-sm font-semibold text-white">
+                    {draft.title || "Untitled draft"}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    {draft.publishedDate || "No date"} / {draft.contentType === "long" ? "Long" : "Short"} / {draft.category ? formatTopicLabel(draft.category) : "No category"}
+                  </p>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleLoadDraft(draft)}
+                      disabled={isBusy}
+                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-white/12 bg-white/[0.04] text-zinc-100 transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Edit draft"
+                    >
+                      <Pencil className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handlePublishDraft(draft)}
+                      disabled={isBusy}
+                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-emerald-300/25 bg-emerald-400/10 text-emerald-50 transition hover:border-emerald-100/70 hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Publish draft"
+                    >
+                      <UploadCloud className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteDraft(draft)}
+                      disabled={isBusy}
+                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-rose-300/25 bg-rose-400/10 text-rose-50 transition hover:border-rose-100/70 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Delete draft"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
           <div className="flex items-center justify-between gap-4">
