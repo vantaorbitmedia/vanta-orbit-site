@@ -306,6 +306,21 @@ function buildVideoId(title: string, date: string) {
   return `${slug}-${compactDate}`;
 }
 
+function formatDraftTimestamp(value?: string) {
+  if (!value) return "Not updated";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function buildPromptInputData(state: VideoManagerState) {
   const keyFacts = parseList(state.keyFacts);
 
@@ -682,7 +697,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
         throw new Error(result.error || "Draft could not be deleted.");
       }
 
-      setSupabaseDrafts((current) => current.filter((item) => (item.supabaseId || item.id) !== id));
+      await loadSupabaseDrafts();
       if ((formState.supabaseId || formState.id) === id) {
         setFormState(initialState);
         setGenerated(null);
@@ -698,6 +713,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
   const handlePublishDraft = async (draft: SavedVideoIdea) => {
     const id = draft.supabaseId || draft.id;
     if (!id) return;
+    if (!window.confirm(`Publish draft "${draft.title || "Untitled"}"?`)) return;
 
     setDraftActionId(id);
     setDraftsError("");
@@ -719,7 +735,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
         throw new Error(result.error || "Draft could not be published.");
       }
 
-      setSupabaseDrafts((current) => current.filter((item) => (item.supabaseId || item.id) !== id));
+      await loadSupabaseDrafts();
       setSaveMessage(`Published "${draft.title || "draft"}".`);
       if ((formState.supabaseId || formState.id) === id) {
         setFormState((current) => ({ ...current, status: "published" }));
@@ -967,7 +983,143 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
   const articleJsonText = generated?.article ? JSON.stringify(generated.article, null, 2) : "";
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
+    <div className="space-y-8">
+      <section className="rounded-[1.5rem] border border-white/10 bg-black/55 p-6 shadow-[0_0_42px_rgba(124,58,237,0.18)] backdrop-blur-xl">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-3 text-violet-200">
+              <FileJson className="size-5" />
+              <p className="text-xs font-bold uppercase tracking-[0.24em]">Saved Drafts</p>
+            </div>
+            <h2 className="mt-3 font-display text-2xl font-bold uppercase tracking-[0.14em] text-white">
+              Drafts Library
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadSupabaseDrafts()}
+            disabled={draftsLoading}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 text-xs font-bold uppercase tracking-[0.16em] text-white transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`size-4 ${draftsLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+
+        {draftsError ? (
+          <p className="mt-5 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-4 text-sm leading-6 text-rose-100">
+            {draftsError}
+          </p>
+        ) : null}
+
+        {draftsLoading && supabaseDrafts.length === 0 ? (
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="h-56 animate-pulse rounded-[1.25rem] border border-white/8 bg-white/[0.04]" />
+            ))}
+          </div>
+        ) : null}
+
+        {!draftsLoading && supabaseDrafts.length === 0 ? (
+          <div className="mt-5 rounded-[1.25rem] border border-dashed border-white/12 bg-black/35 p-6 text-sm leading-6 text-zinc-300">
+            No saved drafts yet. Save a draft from the editor and it will appear here.
+          </div>
+        ) : null}
+
+        {supabaseDrafts.length > 0 ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            {supabaseDrafts.map((draft) => {
+              const id = draft.supabaseId || draft.id || draft.slug || draft.title || "draft";
+              const isBusy = draftActionId === id;
+              const isCurrent = (formState.supabaseId || formState.id) === (draft.supabaseId || draft.id);
+
+              return (
+                <article
+                  key={id}
+                  className={`overflow-hidden rounded-[1.25rem] border bg-black/35 transition ${
+                    isCurrent
+                      ? "border-violet-200/55 shadow-[0_0_28px_rgba(167,139,250,0.18)]"
+                      : "border-white/10"
+                  }`}
+                >
+                  <div className="grid min-h-44 grid-cols-[9rem_minmax(0,1fr)]">
+                    <div className="relative bg-white/[0.04]">
+                      {draft.thumbnail ? (
+                        <Image
+                          src={draft.thumbnail}
+                          alt=""
+                          fill
+                          unoptimized
+                          sizes="9rem"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+                          No image
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-100">
+                          {draft.status || "draft"}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-200">
+                          {draft.contentType === "long" ? "Long" : "Short"}
+                        </span>
+                      </div>
+                      <h3 className="mt-3 line-clamp-2 text-base font-semibold text-white">
+                        {draft.title || "Untitled draft"}
+                      </h3>
+                      <dl className="mt-3 space-y-1 text-xs leading-5 text-zinc-400">
+                        <div className="flex justify-between gap-3">
+                          <dt>Date</dt>
+                          <dd className="text-right text-zinc-200">{draft.publishedDate || "No date"}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt>Updated</dt>
+                          <dd className="text-right text-zinc-200">{formatDraftTimestamp(draft.updatedAt)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 border-t border-white/10 p-3 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => handleLoadDraft(draft)}
+                      disabled={isBusy}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-100 transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Pencil className="size-4" />
+                      Edit Draft
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handlePublishDraft(draft)}
+                      disabled={isBusy}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-50 transition hover:border-emerald-100/70 hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <UploadCloud className="size-4" />
+                      Publish
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteDraft(draft)}
+                      disabled={isBusy}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-rose-300/25 bg-rose-400/10 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-rose-50 transition hover:border-rose-100/70 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Trash2 className="size-4" />
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+
+      <div className="grid gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
       <section className="rounded-[1.5rem] border border-white/10 bg-black/55 p-6 shadow-[0_0_42px_rgba(124,58,237,0.18)] backdrop-blur-xl">
         <div className="flex items-center gap-3 text-violet-200">
           <FileJson className="size-5" />
@@ -994,92 +1146,6 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
             Saved generator idea loaded. Edit it here, add the real video URL when ready, then save a draft or publish.
           </div>
         ) : null}
-
-        <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-200">
-              Supabase drafts
-            </p>
-            <button
-              type="button"
-              onClick={() => void loadSupabaseDrafts()}
-              disabled={draftsLoading}
-              className="inline-flex size-9 items-center justify-center rounded-full border border-white/12 bg-black/30 text-zinc-100 transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
-              title="Refresh drafts"
-            >
-              <RefreshCw className={`size-4 ${draftsLoading ? "animate-spin" : ""}`} />
-            </button>
-          </div>
-          {draftsError ? (
-            <p className="mt-3 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-3 text-xs leading-5 text-rose-100">
-              {draftsError}
-            </p>
-          ) : null}
-          <div className="mt-4 space-y-3">
-            {draftsLoading && supabaseDrafts.length === 0 ? (
-              <p className="rounded-2xl border border-white/8 bg-black/25 p-3 text-sm text-zinc-300">
-                Loading drafts...
-              </p>
-            ) : null}
-            {!draftsLoading && supabaseDrafts.length === 0 ? (
-              <p className="rounded-2xl border border-dashed border-white/12 bg-black/25 p-3 text-sm leading-6 text-zinc-300">
-                No saved Supabase drafts yet.
-              </p>
-            ) : null}
-            {supabaseDrafts.map((draft) => {
-              const id = draft.supabaseId || draft.id || draft.slug || draft.title || "draft";
-              const isBusy = draftActionId === id;
-              const isCurrent = (formState.supabaseId || formState.id) === (draft.supabaseId || draft.id);
-
-              return (
-                <div
-                  key={id}
-                  className={`rounded-2xl border p-3 transition ${
-                    isCurrent
-                      ? "border-violet-200/50 bg-violet-400/10"
-                      : "border-white/10 bg-black/30"
-                  }`}
-                >
-                  <p className="line-clamp-2 text-sm font-semibold text-white">
-                    {draft.title || "Untitled draft"}
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-400">
-                    {draft.publishedDate || "No date"} / {draft.contentType === "long" ? "Long" : "Short"} / {draft.category ? formatTopicLabel(draft.category) : "No category"}
-                  </p>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleLoadDraft(draft)}
-                      disabled={isBusy}
-                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-white/12 bg-white/[0.04] text-zinc-100 transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Edit draft"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handlePublishDraft(draft)}
-                      disabled={isBusy}
-                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-emerald-300/25 bg-emerald-400/10 text-emerald-50 transition hover:border-emerald-100/70 hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Publish draft"
-                    >
-                      <UploadCloud className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteDraft(draft)}
-                      disabled={isBusy}
-                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-rose-300/25 bg-rose-400/10 text-rose-50 transition hover:border-rose-100/70 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Delete draft"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
         <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
           <div className="flex items-center justify-between gap-4">
@@ -1643,6 +1709,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
           </div>
         )}
       </section>
+    </div>
     </div>
   );
 }
