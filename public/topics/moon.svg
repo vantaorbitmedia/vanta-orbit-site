@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <radialGradient id="bg" cx="72%" cy="24%"><stop offset="0" stop-color="#24124d"/><stop offset=".48" stop-color="#05050d"/><stop offset="1" stop-color="#000"/></radialGradient>
+    <radialGradient id="moon" cx="34%" cy="26%"><stop offset="0" stop-color="#fff"/><stop offset=".28" stop-color="#cfcfd8"/><stop offset=".62" stop-color="#6f7080"/><stop offset="1" stop-color="#11121c"/></radialGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <g opacity=".7">
+    <circle cx="80" cy="110" r="1" fill="#fff"/><circle cx="288" cy="220" r="1.5" fill="#ddd6fe"/><circle cx="520" cy="96" r="1" fill="#fff"/><circle cx="920" cy="184" r="1.4" fill="#fff"/><circle cx="1080" cy="560" r="1" fill="#c4b5fd"/>
+  </g>
+  <circle cx="720" cy="410" r="250" fill="url(#moon)"/>
+  <g fill="#1c1d2a" opacity=".28">
+    <circle cx="650" cy="340" r="34"/><circle cx="785" cy="286" r="22"/><circle cx="820" cy="460" r="54"/><circle cx="620" cy="510" r="28"/><circle cx="745" cy="595" r="18"/>
+  </g>
+  <circle cx="720" cy="410" r="252" fill="none" stroke="#f5f3ff" stroke-width="3" opacity=".46"/>
+  <path d="M360 526c210-110 443-120 704-28" fill="none" stroke="#c084fc" stroke-width="2" opacity=".55"/>
+</svg>

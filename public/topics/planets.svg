@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <radialGradient id="bg" cx="72%" cy="28%"><stop offset="0" stop-color="#312e81"/><stop offset=".48" stop-color="#070712"/><stop offset="1" stop-color="#000"/></radialGradient>
+    <radialGradient id="planet" cx="35%" cy="28%"><stop offset="0" stop-color="#f5d0fe"/><stop offset=".28" stop-color="#a855f7"/><stop offset=".62" stop-color="#4c1d95"/><stop offset="1" stop-color="#050008"/></radialGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <g opacity=".62"><circle cx="90" cy="96" r="1" fill="#fff"/><circle cx="268" cy="262" r="1.4" fill="#c4b5fd"/><circle cx="980" cy="116" r="1" fill="#fff"/><circle cx="1100" cy="660" r="1.4" fill="#fff"/></g>
+  <circle cx="740" cy="430" r="230" fill="url(#planet)"/>
+  <ellipse cx="740" cy="430" rx="390" ry="92" fill="none" stroke="#e9d5ff" stroke-width="6" opacity=".58"/>
+  <ellipse cx="740" cy="430" rx="390" ry="92" fill="none" stroke="#7c3aed" stroke-width="18" opacity=".12"/>
+  <circle cx="428" cy="246" r="54" fill="#94a3b8" opacity=".8"/>
+  <circle cx="1002" cy="560" r="76" fill="#111827" stroke="#a78bfa" stroke-width="2" opacity=".88"/>
+</svg>

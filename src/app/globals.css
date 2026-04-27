@@ -1,0 +1,402 @@
+@import "tailwindcss";
+
+:root {
+  --background: #020104;
+  --foreground: #f8f7ff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-space-grotesk);
+  --font-display: var(--font-orbitron);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: #020104;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-space-grotesk), Arial, Helvetica, sans-serif;
+}
+
+body::selection {
+  background: rgba(168, 85, 247, 0.48);
+}
+
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display {
+  font-family: var(--font-orbitron), var(--font-space-grotesk), sans-serif;
+}
+
+.space-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 78% 5%, rgba(147, 51, 234, 0.2), transparent 28rem),
+    radial-gradient(circle at 8% 28%, rgba(88, 28, 135, 0.25), transparent 24rem),
+    #020104;
+}
+
+.space-page::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.9) 0 1px, transparent 1px),
+    radial-gradient(circle, rgba(196,181,253,0.75) 0 1px, transparent 1px);
+  background-position: 0 0, 42px 64px;
+  background-size: 90px 90px, 140px 140px;
+  opacity: 0.18;
+}
+
+.space-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+.home-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background-color: #020104;
+  background-image: url("/images/backgrounds/deep-space-bg.jpg");
+  background-size: cover;
+  background-position: 45% center;
+  background-repeat: no-repeat;
+}
+
+.home-page::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.home-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (min-width: 768px) {
+  .home-page {
+    background-attachment: fixed;
+  }
+}
+
+.home-cinematic {
+  background-color: #020104;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.56), rgba(0, 0, 0, 0.68)),
+    url("/images/backgrounds/deep-space-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+.home-cinematic::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.home-cinematic::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.75) 0 1px, transparent 1.2px),
+    radial-gradient(circle, rgba(196,181,253,0.5) 0 1px, transparent 1.2px);
+  background-position: 0 0, 48px 72px;
+  background-size: 118px 118px, 190px 190px;
+  opacity: 0.09;
+  animation: drift-stars 92s linear infinite;
+}
+
+.home-cinematic > * {
+  position: relative;
+  z-index: 1;
+}
+
+.stars-layer {
+  position: absolute;
+  inset: -20%;
+  opacity: 0.8;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.95) 0 1px, transparent 1.4px),
+    radial-gradient(circle, rgba(196,181,253,0.9) 0 1px, transparent 1.3px);
+  background-size: 92px 92px, 146px 146px;
+}
+
+.stars-layer-one {
+  animation: drift-stars 42s linear infinite;
+}
+
+.stars-layer-two {
+  animation: drift-stars 70s linear infinite reverse;
+  opacity: 0.34;
+  filter: blur(0.4px);
+}
+
+.article-body {
+  background:
+    radial-gradient(circle at 16% 0%, rgba(168, 85, 247, 0.13), transparent 30%),
+    radial-gradient(circle at 88% 18%, rgba(56, 189, 248, 0.07), transparent 28%),
+    rgba(255, 255, 255, 0.045);
+}
+
+.article-body > :first-child {
+  margin-top: 0;
+}
+
+.article-heading-glow {
+  text-shadow:
+    0 0 22px rgba(168, 85, 247, 0.28),
+    0 0 46px rgba(56, 189, 248, 0.12);
+}
+
+.article-body h2,
+.article-body h3 {
+  scroll-margin-top: 7rem;
+}
+
+@keyframes article-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .article-reveal {
+    animation: article-reveal 0.7s ease both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 24%;
+  }
+}
+
+.hero-bg-parallax {
+  animation: hero-parallax 24s ease-in-out infinite;
+  transform: scale(1.06);
+}
+
+.hero-image-fade {
+  mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 42%,
+    rgba(0, 0, 0, 0.62) 58%,
+    rgba(0, 0, 0, 0.18) 72%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 42%,
+    rgba(0, 0, 0, 0.62) 58%,
+    rgba(0, 0, 0, 0.18) 72%,
+    transparent 100%
+  );
+}
+
+.hero-copy-panel {
+  animation: hero-copy-in 720ms ease-out both;
+}
+
+.featured-card-float {
+  animation: featured-float 7s ease-in-out infinite;
+}
+
+.play-pulse::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(216, 180, 254, 0.42);
+  animation: play-pulse 2.4s ease-out infinite;
+}
+
+.planet-rim-light {
+  pointer-events: none;
+  position: absolute;
+  right: clamp(4rem, 7vw, 11rem);
+  top: clamp(8rem, 16vh, 12rem);
+  width: clamp(18rem, 38vw, 42rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border-right: 2px solid rgba(233, 213, 255, 0.8);
+  border-top: 1px solid rgba(196, 181, 253, 0.55);
+  box-shadow:
+    18px -2px 28px rgba(168, 85, 247, 0.28),
+    6px 0 16px rgba(233, 213, 255, 0.34),
+    inset -18px 0 22px rgba(168, 85, 247, 0.12);
+  filter: blur(0.2px);
+  mask-image: linear-gradient(90deg, transparent 0 52%, black 70% 100%);
+  mix-blend-mode: screen;
+  opacity: 0.78;
+}
+
+.planet-edge-bloom {
+  pointer-events: none;
+  position: absolute;
+  right: clamp(3.6rem, 6.4vw, 10.5rem);
+  top: clamp(7.6rem, 15.6vh, 11.6rem);
+  width: clamp(18rem, 38vw, 42rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 84% 33%, rgba(245, 243, 255, 0.22), transparent 8%),
+    radial-gradient(circle at 92% 48%, rgba(168, 85, 247, 0.26), transparent 12%);
+  filter: blur(10px);
+  mask-image: radial-gradient(circle, transparent 0 64%, black 68% 74%, transparent 79%);
+  mix-blend-mode: screen;
+  opacity: 0.72;
+}
+
+.planet-orbit-trail {
+  pointer-events: none;
+  position: absolute;
+  right: clamp(-7rem, -5vw, -2rem);
+  top: clamp(12rem, 25vh, 18rem);
+  width: clamp(26rem, 54vw, 60rem);
+  height: clamp(5rem, 10vw, 8rem);
+  border-top: 1.5px solid rgba(245, 243, 255, 0.74);
+  border-radius: 100%;
+  box-shadow: 0 -6px 16px rgba(168, 85, 247, 0.28);
+  filter: blur(0.15px);
+  transform: rotate(-11deg);
+  mask-image: linear-gradient(90deg, transparent 0 18%, black 36% 68%, transparent 88% 100%);
+  mix-blend-mode: screen;
+}
+
+.glow-pulse {
+  animation: glow-pulse 4.5s ease-in-out infinite;
+}
+
+@keyframes drift-stars {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-92px, 92px, 0);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 rgba(168, 85, 247, 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.38));
+  }
+}
+
+@keyframes hero-parallax {
+  0%,
+  100% {
+    transform: scale(1.06) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scale(1.09) translate3d(-1.2%, 0.8%, 0);
+  }
+}
+
+@keyframes home-bg-drift {
+  0%,
+  100% {
+    background-position: center top, center top, center top;
+    transform: scale(1.04) translate3d(0, 0, 0);
+  }
+  50% {
+    background-position: center top, center top, 48% 2%;
+    transform: scale(1.075) translate3d(-0.7%, 0.5%, 0);
+  }
+}
+
+@keyframes hero-copy-in {
+  from {
+    opacity: 0.45;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes featured-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes play-pulse {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.82);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .planet-rim-light,
+  .planet-edge-bloom {
+    right: -4rem;
+    top: 9rem;
+    width: 22rem;
+    opacity: 0.42;
+  }
+
+  .planet-orbit-trail {
+    right: -9rem;
+    top: 15rem;
+    width: 32rem;
+    opacity: 0.34;
+  }
+}
