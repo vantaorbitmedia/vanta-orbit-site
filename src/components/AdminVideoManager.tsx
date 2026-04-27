@@ -776,7 +776,8 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(preview.video),
       });
-      const result = (await response.json()) as {
+      const responseText = await response.text();
+      let result: {
         video?: {
           id?: string;
           slug?: string;
@@ -786,11 +787,19 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
           relatedArticleSlug?: string;
           supabaseId?: string;
         };
-        storage?: "supabase+json" | "json";
+        storage?: "supabase+json" | "supabase" | "json";
         warning?: string;
         errors?: string[];
         error?: string;
       };
+
+      try {
+        result = responseText
+          ? JSON.parse(responseText)
+          : { error: "Save API returned an empty response." };
+      } catch {
+        result = { error: responseText || "Save API returned a non-JSON response." };
+      }
 
       if (!response.ok || !result.video) {
         throw new Error(result.errors?.join(" ") || result.error || "Save failed.");
@@ -807,7 +816,9 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
       }));
       const storageLabel = result.storage === "supabase+json"
         ? "Supabase and the local JSON mirror"
-        : "the local JSON fallback";
+        : result.storage === "supabase"
+          ? "Supabase"
+          : "the local JSON fallback";
       const baseMessage = status === "published"
         ? `Published to ${storageLabel}. Public pages only use published entries.`
         : `Draft saved to ${storageLabel}. It stays hidden from public pages.`;

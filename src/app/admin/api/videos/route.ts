@@ -1,19 +1,12 @@
-import { NextResponse } from "next/server";
-import { isAuthenticatedAdmin } from "@/lib/admin-auth";
-import { persistVideo, type VideoSavePayload } from "@/lib/video-persistence";
+import { handleVideoSaveRequest } from "./save-handler";
 
 export async function POST(request: Request) {
-  if (!(await isAuthenticatedAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let body: { status?: string } = {};
+  try {
+    body = (await request.clone().json()) as { status?: string };
+  } catch {
+    return handleVideoSaveRequest(request, "draft");
   }
-
-  const body = (await request.json()) as VideoSavePayload;
   const status = body.status === "published" ? "published" : "draft";
-  const result = await persistVideo(body, status);
-
-  if (!result.ok) {
-    return NextResponse.json({ errors: result.errors }, { status: 400 });
-  }
-
-  return NextResponse.json(result);
+  return handleVideoSaveRequest(request, status);
 }

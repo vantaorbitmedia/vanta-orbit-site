@@ -28,6 +28,7 @@ export type VideoSavePayload = {
   contentType?: VideoType;
   category?: ContentTopic;
   videoId?: string;
+  supabaseId?: string;
   thumbnail?: string;
   featured?: boolean;
   tags?: string[];
@@ -77,10 +78,43 @@ type PersistedSupabaseVideo = {
   status?: ContentStatus | null;
 };
 
+type SupabaseSchemaCheck = {
+  ok: boolean;
+  table: string;
+  columns: string[];
+  error?: string;
+};
+
 const videosPath = path.join(process.cwd(), "src", "data", "videos.json");
 const articlesPath = path.join(process.cwd(), "src", "data", "articles.json");
 const validTopics = new Set(contentTopics.map((topic) => topic.value));
 const validTypes = new Set<VideoType>(["short", "long"]);
+const expectedVideoColumns = [
+  "id",
+  "title",
+  "description",
+  "video_url",
+  "thumbnail_url",
+  "published_date",
+  "content_type",
+  "category",
+  "slug",
+  "status",
+  "selected_hook",
+  "selected_thumbnail_text",
+  "tags",
+  "series",
+  "is_featured",
+];
+const expectedDeepDiveColumns = [
+  "id",
+  "video_id",
+  "title",
+  "slug",
+  "content",
+  "meta_description",
+  "status",
+];
 
 function asCleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -100,6 +134,10 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function buildVideoId(title: string, publishedDate: string) {
@@ -280,8 +318,52 @@ async function saveSupabaseDeepDive(videoId: string, record: RawVideoRecord, sta
   return data;
 }
 
+async function checkSupabaseTableColumns(table: string, columns: string[]): Promise<SupabaseSchemaCheck> {
+  const supabase = getSupabaseAdminClient();
+  const { error } = await supabase
+    .from(table)
+    .select(columns.join(","), { head: true })
+    .limit(1);
+
+  if (!error) {
+    return { ok: true, table, columns };
+  }
+
+  const check = {
+    ok: false,
+    table,
+    columns,
+    error: error.message,
+  };
+  console.error("[supabase] schema check failed", check);
+  return check;
+}
+
+export async function getVideoPersistenceSchemaDiagnostics(includeDeepDive = true) {
+  if (!isSupabaseConfigured()) {
+    return {
+      configured: false,
+      checks: [] as SupabaseSchemaCheck[],
+    };
+  }
+
+  const checks = [
+    await checkSupabaseTableColumns("videos", expectedVideoColumns),
+  ];
+
+  if (includeDeepDive) {
+    checks.push(await checkSupabaseTableColumns("deep_dives", expectedDeepDiveColumns));
+  }
+
+  return {
+    configured: true,
+    checks,
+  };
+}
+
 async function saveSupabaseVideo(record: RawVideoRecord, status: ContentStatus) {
   const supabase = getSupabaseAdminClient();
+  const possibleSupabaseId = asCleanString(record.supabaseId) || (isUuid(record.id) ? record.id : "");
   const payload = {
     title: record.title,
     description: record.description,
@@ -298,13 +380,44 @@ async function saveSupabaseVideo(record: RawVideoRecord, status: ContentStatus) 
     series: record.series,
     is_featured: record.featured,
   };
-  const { data: existing, error: selectError } = await supabase
-    .from("videos")
-    .select("id, slug, status")
-    .eq("slug", record.slug)
-    .maybeSingle();
+  let existing: PersistedSupabaseVideo | null = null;
 
-  if (selectError) throw new Error(selectError.message);
+  if (possibleSupabaseId) {
+    const { data, error } = await supabase
+      .from("videos")
+      .select("id, slug, status")
+      .eq("id", possibleSupabaseId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[supabase] videos id lookup failed", {
+        id: possibleSupabaseId,
+        slug: record.slug,
+        error: error.message,
+      });
+      throw new Error(error.message);
+    }
+
+    existing = data as PersistedSupabaseVideo | null;
+  }
+
+  if (!existing) {
+    const { data, error } = await supabase
+      .from("videos")
+      .select("id, slug, status")
+      .eq("slug", record.slug)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[supabase] videos slug lookup failed", {
+        slug: record.slug,
+        error: error.message,
+      });
+      throw new Error(error.message);
+    }
+
+    existing = data as PersistedSupabaseVideo | null;
+  }
 
   if (existing?.id) {
     const { data, error } = await supabase
@@ -314,17 +427,36 @@ async function saveSupabaseVideo(record: RawVideoRecord, status: ContentStatus) 
       .select("id, slug, status")
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("[supabase] videos update failed", {
+        id: existing.id,
+        slug: record.slug,
+        status,
+        error: error.message,
+      });
+      throw new Error(error.message);
+    }
     return data as PersistedSupabaseVideo;
   }
 
+  const insertPayload = possibleSupabaseId
+    ? { id: possibleSupabaseId, ...payload }
+    : payload;
   const { data, error } = await supabase
     .from("videos")
-    .insert(payload)
+    .insert(insertPayload)
     .select("id, slug, status")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error("[supabase] videos insert failed", {
+      id: possibleSupabaseId || undefined,
+      slug: record.slug,
+      status,
+      error: error.message,
+    });
+    throw new Error(error.message);
+  }
   return data as PersistedSupabaseVideo;
 }
 
@@ -333,6 +465,10 @@ function revalidatePublicContent() {
   revalidatePath("/videos");
   revalidatePath("/explore");
   revalidatePath("/blog");
+}
+
+function canWriteJsonMirror() {
+  return process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1";
 }
 
 export async function persistVideo(body: VideoSavePayload, requestedStatus: ContentStatus) {
@@ -353,31 +489,82 @@ export async function persistVideo(body: VideoSavePayload, requestedStatus: Cont
     return { ok: false as const, errors };
   }
 
-  const jsonRecord = await saveJsonMirror({ ...body, contentType, category }, status);
+  const record = toRecord({ ...body, contentType, category }, status);
   let supabaseVideo: PersistedSupabaseVideo | null = null;
   let deepDive = null;
   let supabaseError = "";
+  let jsonRecord: RawVideoRecord | null = null;
+  let jsonError = "";
+  const schemaDiagnostics = await getVideoPersistenceSchemaDiagnostics(
+    Boolean(record.deepDiveTitle && record.deepDiveContent),
+  );
 
   if (isSupabaseConfigured()) {
     try {
-      supabaseVideo = await saveSupabaseVideo(jsonRecord, status);
-      deepDive = await saveSupabaseDeepDive(supabaseVideo.id, jsonRecord, status);
+      const failedSchemaChecks = schemaDiagnostics.checks.filter((check) => !check.ok);
+      if (failedSchemaChecks.length > 0) {
+        throw new Error(
+          failedSchemaChecks
+            .map((check) => `${check.table}: ${check.error}`)
+            .join(" | "),
+        );
+      }
+
+      supabaseVideo = await saveSupabaseVideo(record, status);
+      deepDive = await saveSupabaseDeepDive(supabaseVideo.id, record, status);
     } catch (error) {
       supabaseError = error instanceof Error ? error.message : "Supabase save failed.";
+      console.error("[supabase] video persistence failed", {
+        status,
+        slug: record.slug,
+        error: supabaseError,
+      });
     }
+  }
+
+  if (!supabaseVideo && canWriteJsonMirror()) {
+    try {
+      jsonRecord = await saveJsonMirror({ ...body, contentType, category }, status);
+    } catch (error) {
+      jsonError = error instanceof Error ? error.message : "JSON fallback save failed.";
+      console.error("[video-persistence] JSON fallback failed", {
+        status,
+        slug: record.slug,
+        error: jsonError,
+      });
+    }
+  }
+
+  if (!supabaseVideo && !jsonRecord) {
+    return {
+      ok: false as const,
+      errors: [
+        supabaseError
+          ? `Supabase save failed: ${supabaseError}`
+          : "Supabase is not configured.",
+        jsonError
+          ? `JSON fallback failed: ${jsonError}`
+          : "JSON fallback is disabled in production.",
+      ],
+      schemaDiagnostics,
+    };
   }
 
   revalidatePublicContent();
 
+  const savedRecord = jsonRecord ?? record;
+  const storage = supabaseVideo ? (jsonRecord ? "supabase+json" : "supabase") : "json";
+
   return {
     ok: true as const,
     video: {
-      ...jsonRecord,
+      ...savedRecord,
       supabaseId: supabaseVideo?.id ?? "",
       supabaseSlug: supabaseVideo?.slug ?? "",
     },
     deepDive,
-    storage: supabaseVideo ? "supabase+json" : "json",
-    warning: supabaseError || (!isSupabaseConfigured() ? "Supabase is not configured, so the JSON fallback was used." : ""),
+    storage,
+    schemaDiagnostics,
+    warning: supabaseError || jsonError || (!isSupabaseConfigured() ? "Supabase is not configured, so the JSON fallback was used." : ""),
   };
 }
