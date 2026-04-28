@@ -16,7 +16,11 @@ import {
 const fallbackThumbnail = "/images/thumbnails/placeholder.jpg";
 
 export default function VideoCard({ video }: { video: VideoItem }) {
-  const thumbnailSources = [...getYouTubeThumbnails(video.youtubeId), fallbackThumbnail];
+  const thumbnailSources = Array.from(new Set([
+    video.thumbnail,
+    ...getYouTubeThumbnails(video.youtubeId).filter((thumbnail) => !thumbnail.includes("/maxresdefault.jpg")),
+    fallbackThumbnail,
+  ].filter(Boolean)));
   const [thumbnailIndex, setThumbnailIndex] = useState(0);
   const [open, setOpen] = useState(false);
   const watchUrl = createYouTubeWatchUrl(video.youtubeId);
