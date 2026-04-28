@@ -116,9 +116,7 @@ function dedupeKey(video: VideoItem) {
   return video.videoId || video.slug || video.id;
 }
 
-function sanitizePublicVideo(video: VideoItem) {
-  const articleSlugs = new Set(articles.map((article) => article.slug));
-
+function sanitizePublicVideo(video: VideoItem, articleSlugs: Set<string>) {
   return {
     ...video,
     thumbnail: stablePublicThumbnail(video.thumbnail),
@@ -128,7 +126,7 @@ function sanitizePublicVideo(video: VideoItem) {
   };
 }
 
-function mergeVideos(primary: VideoItem[], fallback: VideoItem[]) {
+function mergeVideos(primary: VideoItem[], fallback: VideoItem[], validArticleSlugs = new Set(articles.map((article) => article.slug))) {
   const seen = new Set<string>();
   const merged: VideoItem[] = [];
 
@@ -136,7 +134,7 @@ function mergeVideos(primary: VideoItem[], fallback: VideoItem[]) {
     const key = dedupeKey(video);
     if (seen.has(key)) continue;
     seen.add(key);
-    merged.push(sanitizePublicVideo(video));
+    merged.push(sanitizePublicVideo(video, validArticleSlugs));
   }
 
   return [...merged].sort((left, right) => {
@@ -147,8 +145,13 @@ function mergeVideos(primary: VideoItem[], fallback: VideoItem[]) {
 }
 
 export async function getPublicVideos() {
-  const supabaseVideos = (await getSupabaseVideos({ statuses: ["published"] })).map(sanitizePublicVideo);
-  return mergeVideos(supabaseVideos, fallbackVideos);
+  const supabaseVideos = await getSupabaseVideos({ statuses: ["published"], includeDeepDives: true });
+  const validArticleSlugs = new Set([
+    ...articles.map((article) => article.slug),
+    ...supabaseVideos.map((video) => video.relatedArticleSlug).filter(Boolean),
+  ]);
+
+  return mergeVideos(supabaseVideos, fallbackVideos, validArticleSlugs);
 }
 
 export async function getSupabaseVideos({
@@ -221,7 +224,12 @@ export async function getSupabaseVideos({
 
 export async function getAdminVideos() {
   const supabaseVideos = await getSupabaseVideos({ includeDeepDives: true });
-  return mergeVideos(supabaseVideos, fallbackVideos);
+  const validArticleSlugs = new Set([
+    ...articles.map((article) => article.slug),
+    ...supabaseVideos.map((video) => video.relatedArticleSlug).filter(Boolean),
+  ]);
+
+  return mergeVideos(supabaseVideos, fallbackVideos, validArticleSlugs);
 }
 
 export async function getPublicLatestVideos(limit = 6) {
@@ -236,6 +244,7 @@ export async function getPublicFeaturedVideo() {
 
 export async function getPublicArchiveContent() {
   const publicVideos = await getPublicVideos();
+  const publicArticles = await getPublicArticles();
   const videoItems: ContentItem[] = publicVideos.map((video) => ({
     title: video.title,
     slug: video.slug,
@@ -253,7 +262,7 @@ export async function getPublicArchiveContent() {
   }));
 
   return sortContentByNewestDate([
-    ...articles.map((article) => ({
+    ...publicArticles.map((article) => ({
       title: article.title,
       slug: article.slug,
       topic: article.topic,
@@ -286,19 +295,37 @@ function excerpt(content: string) {
   return compact.length > 170 ? `${compact.slice(0, 167).trimEnd()}...` : compact;
 }
 
-export async function getAdminArticles() {
+function mergeArticles(primary: ArticleItem[], fallback: ArticleItem[]) {
+  const seen = new Set<string>();
+  return sortContentByNewestDate([...primary, ...fallback].filter((article) => {
+    if (seen.has(article.slug)) return false;
+    seen.add(article.slug);
+    return true;
+  }));
+}
+
+async function getSupabaseArticles({ statuses }: { statuses?: string[] } = {}) {
   if (!isSupabaseConfigured()) return articles;
 
   try {
     const supabase = getSupabaseAdminClient();
-    const { data: deepDiveData, error } = await supabase
+    let query = supabase
       .from("deep_dives")
       .select("video_id,title,slug,content,meta_description,status")
       .order("slug", { ascending: true });
 
+    if (statuses && statuses.length > 0) {
+      query = query.in("status", statuses.flatMap((status) => {
+        const lower = status.toLowerCase();
+        return [status, lower, lower.toUpperCase(), `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`];
+      }));
+    }
+
+    const { data: deepDiveData, error } = await query;
+
     if (error) {
-      console.error("[public-content] Supabase admin deep dives query failed", { error: error.message });
-      return articles;
+      console.error("[public-content] Supabase deep dives query failed", { error: error.message });
+      return [];
     }
 
     const deepDives = (deepDiveData ?? []) as unknown as SupabaseDeepDiveRow[];
@@ -350,16 +377,25 @@ export async function getAdminArticles() {
       })
       .filter((article): article is ArticleItem => Boolean(article));
 
-    const seen = new Set<string>();
-    return sortContentByNewestDate([...supabaseArticles, ...articles].filter((article) => {
-      if (seen.has(article.slug)) return false;
-      seen.add(article.slug);
-      return true;
-    }));
+    return sortContentByNewestDate(supabaseArticles);
   } catch (error) {
-    console.error("[public-content] Falling back to JSON admin articles", {
-      error: error instanceof Error ? error.message : "Unknown admin article load error.",
+    console.error("[public-content] Supabase article load failed", {
+      error: error instanceof Error ? error.message : "Unknown article load error.",
     });
-    return articles;
+    return [];
   }
+}
+
+export async function getPublicArticles() {
+  const supabaseArticles = await getSupabaseArticles({ statuses: ["published"] });
+  return mergeArticles(supabaseArticles, articles);
+}
+
+export async function getPublicArticle(slug: string) {
+  return (await getPublicArticles()).find((article) => article.slug === slug);
+}
+
+export async function getAdminArticles() {
+  const supabaseArticles = await getSupabaseArticles();
+  return mergeArticles(supabaseArticles, articles);
 }

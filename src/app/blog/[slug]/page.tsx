@@ -10,11 +10,11 @@ import {
   articles,
   createYouTubeWatchUrl,
   formatTopicLabel,
-  getArticle,
-  getVideoById,
   isValidYouTubeId,
-  relatedFor,
 } from "@/lib/content";
+import { getPublicArchiveContent, getPublicArticle, getPublicVideos } from "@/lib/public-content";
+
+export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -49,7 +49,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const article = getArticle(slug);
+  const article = await getPublicArticle(slug);
 
   if (!article) {
     return { title: "Article Not Found" };
@@ -73,12 +73,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ArticlePage({ params }: Props) {
   const { slug } = await params;
-  const article = getArticle(slug);
+  const article = await getPublicArticle(slug);
 
   if (!article) notFound();
 
-  const relatedVideo = article.relatedVideoId ? getVideoById(article.relatedVideoId) : undefined;
-  const related = relatedFor(article);
+  const [publicVideos, archiveContent] = await Promise.all([
+    getPublicVideos(),
+    getPublicArchiveContent(),
+  ]);
+  const relatedVideo = publicVideos.find((video) =>
+    video.id === article.relatedVideoId || video.slug === article.relatedVideoSlug
+  );
+  const related = archiveContent
+    .filter((entry) => entry.slug !== article.slug && entry.topic === article.topic)
+    .slice(0, 3);
   const canEmbedRelatedVideo = isValidYouTubeId(article.youtubeId);
   const articleWatchUrl = createYouTubeWatchUrl(article.youtubeId);
   const articleBlocks = splitArticleBlocksForRendering(article.content);

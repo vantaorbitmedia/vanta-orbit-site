@@ -1,14 +1,18 @@
 import type { Metadata } from "next";
 import ContentCard from "@/components/ContentCard";
 import SectionHeader from "@/components/SectionHeader";
-import { articles } from "@/lib/content";
+import { getPublicArticles } from "@/lib/public-content";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Blog",
   description: "Read deeper written breakdowns of Vanta Orbit Media space and science videos.",
 };
 
-export default function BlogPage() {
+export default async function BlogPage() {
+  const articles = await getPublicArticles();
+
   return (
     <main className="space-page px-4 pb-24 pt-32 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-7xl">

@@ -480,12 +480,114 @@ function readHookLabInsights() {
   }
 }
 
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function normalizeContentTopic(value: unknown): ContentTopic {
+  return contentTopics.some((topic) => topic.value === value) ? (value as ContentTopic) : initialState.topic;
+}
+
+function normalizeContentType(value: unknown): "short" | "long" {
+  return value === "long" ? "long" : "short";
+}
+
+function normalizeSeriesParts(value: unknown): SeriesPart[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((part): part is Partial<SeriesPart> => Boolean(part) && typeof part === "object")
+    .map((part, index) => ({
+      seriesName: stringValue(part.seriesName),
+      partNumber: stringValue(part.partNumber) || `Part ${index + 1}`,
+      title: stringValue(part.title),
+      hook: stringValue(part.hook),
+      script: stringArray(part.script),
+      timedSceneBreakdown: stringArray(part.timedSceneBreakdown),
+      visualProductionPlan: stringArray(part.visualProductionPlan),
+      leonardoPrompts: stringArray(part.leonardoPrompts),
+      runwayAnimationPrompts: stringArray(part.runwayAnimationPrompts),
+      textOverlays: stringArray(part.textOverlays),
+      cta: stringValue(part.cta),
+    }));
+}
+
+function normalizeGeneratorOutput(value: unknown): GeneratorOutput | null {
+  if (!value || typeof value !== "object") return null;
+
+  const raw = value as Partial<GeneratorOutput>;
+  const titles = stringArray(raw.titles);
+  const hooks = stringArray(raw.hooks);
+  const timedScript = stringArray(raw.timedScript);
+  const visualPlan = stringArray(raw.visualPlan);
+  const leonardoPrompts = stringArray(raw.leonardoPrompts);
+  const runwayPrompts = stringArray(raw.runwayPrompts);
+  const visualProductionPlan = stringArray(raw.visualProductionPlan);
+  const runwayAnimationPrompts = stringArray(raw.runwayAnimationPrompts);
+
+  if (titles.length === 0 && hooks.length === 0 && timedScript.length === 0) return null;
+
+  return {
+    titles,
+    description: stringValue(raw.description),
+    videoContext: stringValue(raw.videoContext),
+    keyFacts: stringArray(raw.keyFacts),
+    category: normalizeContentTopic(raw.category),
+    contentType: normalizeContentType(raw.contentType),
+    targetAudience: stringValue(raw.targetAudience),
+    tone: stringValue(raw.tone),
+    depthLevel: stringValue(raw.depthLevel),
+    relatedQuestions: stringArray(raw.relatedQuestions),
+    seoKeywords: stringArray(raw.seoKeywords),
+    suggestedArticleStructure: stringArray(raw.suggestedArticleStructure),
+    hooks,
+    timedScript,
+    visualPlan,
+    leonardoPrompts,
+    runwayPrompts,
+    visualProductionPlan: visualProductionPlan.length > 0 ? visualProductionPlan : visualPlan,
+    runwayAnimationPrompts: runwayAnimationPrompts.length > 0 ? runwayAnimationPrompts : runwayPrompts,
+    seriesParts: normalizeSeriesParts(raw.seriesParts),
+    postingPlan: stringArray(raw.postingPlan),
+    caption: stringValue(raw.caption),
+    hashtags: stringArray(raw.hashtags),
+    thumbnailText: stringArray(raw.thumbnailText),
+    hookLabPrompt: stringValue(raw.hookLabPrompt),
+  };
+}
+
+function normalizeSavedGeneration(value: unknown): SavedGeneration | null {
+  if (!value || typeof value !== "object") return null;
+
+  const raw = value as Partial<SavedGeneration>;
+  const output = normalizeGeneratorOutput(raw.output);
+  if (!output) return null;
+
+  return {
+    id: stringValue(raw.id) || crypto.randomUUID(),
+    createdAt: stringValue(raw.createdAt) || new Date().toISOString(),
+    formState: { ...initialState, ...(raw.formState ?? {}) },
+    output,
+    selectedImageUrls: stringArray(raw.selectedImageUrls),
+    thumbnailCandidate: stringValue(raw.thumbnailCandidate),
+  };
+}
+
 function readGenerationHistory() {
   if (typeof window === "undefined") return [];
 
   try {
     const saved = window.localStorage.getItem(VIDEO_IDEAS_HISTORY_KEY);
-    return saved ? (JSON.parse(saved) as SavedGeneration[]) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map(normalizeSavedGeneration)
+      .filter((entry): entry is SavedGeneration => Boolean(entry));
   } catch {
     return [];
   }
@@ -1134,13 +1236,19 @@ export default function AdminGenerator({ videos, aiModels }: { videos: VideoItem
   };
 
   const restoreGeneration = (saved: SavedGeneration) => {
-    setFormState({ ...initialState, ...saved.formState });
-    setOutput(saved.output);
-    setSelectedImageUrls(saved.selectedImageUrls);
-    setThumbnailCandidate(saved.thumbnailCandidate);
-    setSelectedTitle(saved.output.titles[0] ?? "");
-    setSelectedHook(saved.output.hooks[0] ?? "");
-    setSelectedThumbnailText(saved.output.thumbnailText[0] ?? "");
+    const normalized = normalizeSavedGeneration(saved);
+    if (!normalized) {
+      setError("This saved idea is too old or incomplete to load.");
+      return;
+    }
+
+    setFormState({ ...initialState, ...normalized.formState });
+    setOutput(normalized.output);
+    setSelectedImageUrls(normalized.selectedImageUrls);
+    setThumbnailCandidate(normalized.thumbnailCandidate);
+    setSelectedTitle(normalized.output.titles[0] ?? "");
+    setSelectedHook(normalized.output.hooks[0] ?? "");
+    setSelectedThumbnailText(normalized.output.thumbnailText[0] ?? "");
     setRawOutput("");
     setError("");
     setSaved(false);
