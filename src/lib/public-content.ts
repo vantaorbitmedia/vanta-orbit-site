@@ -86,6 +86,24 @@ function supabaseVideoToRaw(row: PublicSupabaseVideoRow) {
   };
 }
 
+function stablePublicThumbnail(thumbnail: string) {
+  return thumbnail.includes("img.youtube.com/vi/") && thumbnail.includes("/maxresdefault.jpg")
+    ? thumbnail.replace("/maxresdefault.jpg", "/hqdefault.jpg")
+    : thumbnail;
+}
+
+function sanitizePublicVideo(video: VideoItem) {
+  const articleSlugs = new Set(articles.map((article) => article.slug));
+
+  return {
+    ...video,
+    thumbnail: stablePublicThumbnail(video.thumbnail),
+    relatedArticleSlug: video.relatedArticleSlug && articleSlugs.has(video.relatedArticleSlug)
+      ? video.relatedArticleSlug
+      : "",
+  };
+}
+
 function mergeVideos(primary: VideoItem[], fallback: VideoItem[]) {
   const seen = new Set<string>();
   const merged: VideoItem[] = [];
@@ -94,7 +112,7 @@ function mergeVideos(primary: VideoItem[], fallback: VideoItem[]) {
     const key = video.slug || video.id;
     if (seen.has(key)) continue;
     seen.add(key);
-    merged.push(video);
+    merged.push(sanitizePublicVideo(video));
   }
 
   return [...merged].sort((left, right) => {
