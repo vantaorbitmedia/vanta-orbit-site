@@ -63,6 +63,28 @@ async function deleteSupabaseDeepDive(slug: string) {
   return "";
 }
 
+async function deleteSupabaseDeepDiveRecord(slug: string) {
+  if (!isSupabaseConfigured()) return false;
+
+  const supabase = getSupabaseAdminClient();
+  const { data: existing, error: selectError } = await supabase
+    .from("deep_dives")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (selectError) throw new Error(selectError.message);
+  if (!existing?.id) return false;
+
+  const { error } = await supabase
+    .from("deep_dives")
+    .delete()
+    .eq("id", existing.id);
+
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 export async function DELETE(_request: Request, context: RouteContext<"/admin/api/articles/[slug]">) {
   if (!(await isAuthenticatedAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -73,6 +95,25 @@ export async function DELETE(_request: Request, context: RouteContext<"/admin/ap
 
   if (!cleanSlug) {
     return NextResponse.json({ error: "Article slug is required." }, { status: 400 });
+  }
+
+  try {
+    const deletedSupabase = await deleteSupabaseDeepDiveRecord(cleanSlug);
+
+    if (deletedSupabase) {
+      revalidatePath("/");
+      revalidatePath("/blog");
+      revalidatePath(`/blog/${cleanSlug}`);
+      revalidatePath("/videos");
+      revalidatePath("/explore");
+
+      return NextResponse.json({ article: { slug: cleanSlug }, detachedVideos: 0, storage: "supabase" });
+    }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Supabase deep dive delete failed." },
+      { status: 500 },
+    );
   }
 
   const file = await readFile(articlesPath, "utf8");

@@ -180,6 +180,32 @@ function applyFieldAliases(record: RawVideoRecord, payload: Required<VideoUpdate
   return next;
 }
 
+async function updateSupabaseVideo(id: string, payload: Required<VideoUpdatePayload>, videoId: string) {
+  if (!isSupabaseConfigured()) return null;
+
+  const supabase = getSupabaseAdminClient();
+  const updatePayload = {
+    title: payload.title,
+    description: payload.description,
+    video_url: payload.videoUrl,
+    thumbnail_url: payload.thumbnail || getYouTubeThumbnails(videoId)[0] || "",
+    published_date: payload.publishedDate,
+    content_type: payload.contentType,
+    category: payload.category,
+    tags: payload.tags,
+    is_featured: payload.featured,
+  };
+  const { data, error } = await supabase
+    .from("videos")
+    .update(updatePayload)
+    .eq("id", id)
+    .select("id, slug, status")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as { id: string; slug?: string | null; status?: string | null } | null;
+}
+
 async function deleteLinkedArticle(video: RawVideoRecord) {
   const file = await readFile(articlesPath, "utf8");
   const articles = JSON.parse(file) as RawArticleRecord[];
@@ -243,6 +269,35 @@ async function deleteSupabaseVideoAndDeepDive(video: RawVideoRecord) {
   return "";
 }
 
+async function deleteSupabaseVideoById(id: string) {
+  if (!isSupabaseConfigured()) return false;
+
+  const supabase = getSupabaseAdminClient();
+  const { data: existing, error: selectError } = await supabase
+    .from("videos")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (selectError) throw new Error(selectError.message);
+  if (!existing?.id) return false;
+
+  const { error: deepDiveError } = await supabase
+    .from("deep_dives")
+    .delete()
+    .eq("video_id", id);
+
+  if (deepDiveError) throw new Error(deepDiveError.message);
+
+  const { error } = await supabase
+    .from("videos")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 export async function PATCH(request: Request, context: RouteContext<"/admin/api/videos/[id]">) {
   if (!(await isAuthenticatedAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -291,6 +346,32 @@ export async function PATCH(request: Request, context: RouteContext<"/admin/api/
     return NextResponse.json({ errors }, { status: 400 });
   }
 
+  try {
+    const supabaseVideo = await updateSupabaseVideo(
+      id,
+      {
+        ...payload,
+        contentType: payload.contentType,
+        category: payload.category,
+      },
+      videoId,
+    );
+
+    if (supabaseVideo?.id) {
+      revalidatePath("/");
+      revalidatePath("/videos");
+      revalidatePath("/explore");
+      revalidatePath("/blog");
+
+      return NextResponse.json({ video: supabaseVideo, storage: "supabase" });
+    }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Supabase update failed." },
+      { status: 500 },
+    );
+  }
+
   const file = await readFile(videosPath, "utf8");
   const videos = JSON.parse(file) as RawVideoRecord[];
   const index = videos.findIndex((video) => video.id === id);
@@ -325,6 +406,24 @@ export async function DELETE(_request: Request, context: RouteContext<"/admin/ap
   }
 
   const { id } = await context.params;
+  try {
+    const deletedSupabase = await deleteSupabaseVideoById(id);
+
+    if (deletedSupabase) {
+      revalidatePath("/");
+      revalidatePath("/videos");
+      revalidatePath("/explore");
+      revalidatePath("/blog");
+
+      return NextResponse.json({ video: { id }, storage: "supabase" });
+    }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Supabase delete failed." },
+      { status: 500 },
+    );
+  }
+
   const file = await readFile(videosPath, "utf8");
   const videos = JSON.parse(file) as RawVideoRecord[];
   const index = videos.findIndex((video) => video.id === id);

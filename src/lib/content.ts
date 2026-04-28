@@ -30,7 +30,7 @@ export type Topic = HomeTopicName;
 
 export type VideoType = "short" | "long";
 export type HookPlatform = "YouTube" | "Facebook" | "Instagram" | "TikTok";
-export type ContentStatus = "draft" | "published";
+export type ContentStatus = "draft" | "published" | "archived";
 
 export type VideoItem = {
   id: string;

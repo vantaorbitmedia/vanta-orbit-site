@@ -1,7 +1,7 @@
 import { handleVideoSaveRequest } from "../save-handler";
 import { NextResponse } from "next/server";
 import { isAuthenticatedAdmin } from "@/lib/admin-auth";
-import { listDraftVideos } from "@/lib/video-persistence";
+import { getAdminVideos } from "@/lib/public-content";
 
 export async function GET() {
   try {
@@ -9,8 +9,12 @@ export async function GET() {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const drafts = await listDraftVideos();
-    return NextResponse.json({ success: true, drafts });
+    const videos = await getAdminVideos();
+    return NextResponse.json({
+      success: true,
+      videos,
+      drafts: videos.filter((video) => video.status === "draft"),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Drafts could not be loaded.";
     console.error("[admin-api] draft list failed", { error: message });

@@ -175,6 +175,7 @@ type SavedVideoIdea = Partial<{
   keyFacts: string[];
   category: ContentTopic;
   contentType: VideoType;
+  videoId: string;
   targetAudience: string;
   tone: string;
   depthLevel: string;
@@ -530,6 +531,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
   const [loadedDraft, setLoadedDraft] = useState(false);
   const [formState, setFormState] = useState<VideoManagerState>(initialState);
   const [supabaseDrafts, setSupabaseDrafts] = useState<SavedVideoIdea[]>([]);
+  const [videoLibraryStatus, setVideoLibraryStatus] = useState<"all" | ContentStatus>("all");
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftsError, setDraftsError] = useState("");
   const [draftActionId, setDraftActionId] = useState("");
@@ -550,7 +552,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
     try {
       const response = await fetch("/admin/api/videos/draft", { method: "GET" });
       const responseText = await response.text();
-      let result: { success?: boolean; drafts?: SavedVideoIdea[]; error?: string };
+      let result: { success?: boolean; drafts?: SavedVideoIdea[]; videos?: SavedVideoIdea[]; error?: string };
 
       try {
         result = responseText
@@ -564,7 +566,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
         throw new Error(result.error || "Drafts could not be loaded.");
       }
 
-      setSupabaseDrafts(Array.isArray(result.drafts) ? result.drafts : []);
+      setSupabaseDrafts(Array.isArray(result.videos) ? result.videos : Array.isArray(result.drafts) ? result.drafts : []);
     } catch (error) {
       setDraftsError(error instanceof Error ? error.message : "Drafts could not be loaded.");
     } finally {
@@ -605,6 +607,10 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
   );
   const parsedRelatedQuestions = useMemo(() => parseList(formState.relatedQuestions), [formState.relatedQuestions]);
   const parsedSeoKeywords = useMemo(() => parseList(formState.seoKeywords), [formState.seoKeywords]);
+  const filteredVideoLibrary = useMemo(
+    () => supabaseDrafts.filter((video) => videoLibraryStatus === "all" || video.status === videoLibraryStatus),
+    [supabaseDrafts, videoLibraryStatus],
+  );
   const deepDivePromptMode = getDeepDivePromptMode(formState.type);
 
   const missingMetadata = useMemo(() => {
@@ -993,18 +999,33 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
               <p className="text-xs font-bold uppercase tracking-[0.24em]">Saved Drafts</p>
             </div>
             <h2 className="mt-3 font-display text-2xl font-bold uppercase tracking-[0.14em] text-white">
-              Drafts Library
+              Video Library
             </h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">
+              Showing Supabase videos plus local JSON fallback entries while migration is in progress.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadSupabaseDrafts()}
-            disabled={draftsLoading}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 text-xs font-bold uppercase tracking-[0.16em] text-white transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw className={`size-4 ${draftsLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <select
+              value={videoLibraryStatus}
+              onChange={(event) => setVideoLibraryStatus(event.target.value as "all" | ContentStatus)}
+              className="min-h-11 rounded-full border border-white/12 bg-white/[0.04] px-4 text-xs font-bold uppercase tracking-[0.14em] text-white outline-none transition focus:border-violet-200/70"
+            >
+              <option value="all" className="bg-[#08060f]">All statuses</option>
+              <option value="draft" className="bg-[#08060f]">Draft</option>
+              <option value="published" className="bg-[#08060f]">Published</option>
+              <option value="archived" className="bg-[#08060f]">Archived</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => void loadSupabaseDrafts()}
+              disabled={draftsLoading}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 text-xs font-bold uppercase tracking-[0.16em] text-white transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={`size-4 ${draftsLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {draftsError ? (
@@ -1013,7 +1034,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
           </p>
         ) : null}
 
-        {draftsLoading && supabaseDrafts.length === 0 ? (
+        {draftsLoading && filteredVideoLibrary.length === 0 ? (
           <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[0, 1, 2].map((item) => (
               <div key={item} className="h-56 animate-pulse rounded-[1.25rem] border border-white/8 bg-white/[0.04]" />
@@ -1021,15 +1042,15 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
           </div>
         ) : null}
 
-        {!draftsLoading && supabaseDrafts.length === 0 ? (
+        {!draftsLoading && filteredVideoLibrary.length === 0 ? (
           <div className="mt-5 rounded-[1.25rem] border border-dashed border-white/12 bg-black/35 p-6 text-sm leading-6 text-zinc-300">
-            No saved drafts yet. Save a draft from the editor and it will appear here.
+            No videos returned for this filter. Refresh the library or change the status filter.
           </div>
         ) : null}
 
-        {supabaseDrafts.length > 0 ? (
+        {filteredVideoLibrary.length > 0 ? (
           <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-            {supabaseDrafts.map((draft) => {
+            {filteredVideoLibrary.map((draft) => {
               const id = draft.supabaseId || draft.id || draft.slug || draft.title || "draft";
               const isBusy = draftActionId === id;
               const isCurrent = (formState.supabaseId || formState.id) === (draft.supabaseId || draft.id);
@@ -1062,7 +1083,13 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
                     </div>
                     <div className="min-w-0 p-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-100">
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${
+                          draft.status === "published"
+                            ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                            : draft.status === "archived"
+                              ? "border-zinc-300/25 bg-zinc-400/10 text-zinc-200"
+                              : "border-amber-300/30 bg-amber-400/10 text-amber-100"
+                        }`}>
                           {draft.status || "draft"}
                         </span>
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-200">
@@ -1094,24 +1121,28 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
                       <Pencil className="size-4" />
                       Edit Draft
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handlePublishDraft(draft)}
-                      disabled={isBusy}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-50 transition hover:border-emerald-100/70 hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <UploadCloud className="size-4" />
-                      Publish
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteDraft(draft)}
-                      disabled={isBusy}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-rose-300/25 bg-rose-400/10 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-rose-50 transition hover:border-rose-100/70 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Trash2 className="size-4" />
-                      Delete
-                    </button>
+                    {draft.status === "draft" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handlePublishDraft(draft)}
+                          disabled={isBusy}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-50 transition hover:border-emerald-100/70 hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <UploadCloud className="size-4" />
+                          Publish
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteDraft(draft)}
+                          disabled={isBusy}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-rose-300/25 bg-rose-400/10 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-rose-50 transition hover:border-rose-100/70 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Trash2 className="size-4" />
+                          Delete
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </article>
               );

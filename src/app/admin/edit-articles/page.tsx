@@ -3,7 +3,9 @@ import Link from "next/link";
 import AdminArticlesEditor from "@/components/AdminArticlesEditor";
 import AdminLogoutButton from "@/components/AdminLogoutButton";
 import { requireAdminSession } from "@/lib/admin-auth";
-import { articles } from "@/lib/content";
+import { getAdminArticles } from "@/lib/public-content";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Edit Articles",
@@ -12,6 +14,7 @@ export const metadata: Metadata = {
 
 export default async function EditArticlesPage() {
   await requireAdminSession();
+  const articles = await getAdminArticles();
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black px-4 pb-20 pt-28 sm:px-6 lg:px-8">
