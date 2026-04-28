@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Check, ChevronDown, Copy, FileJson, Pencil, RefreshCw, Sparkles, Trash2, TriangleAlert, UploadCloud, WandSparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   articles,
   contentTopics,
@@ -528,6 +528,7 @@ function JsonBlock({
 }
 
 export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) {
+  const editorSectionRef = useRef<HTMLElement | null>(null);
   const [loadedDraft, setLoadedDraft] = useState(false);
   const [formState, setFormState] = useState<VideoManagerState>(initialState);
   const [supabaseDrafts, setSupabaseDrafts] = useState<SavedVideoIdea[]>([]);
@@ -673,9 +674,12 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
     setGenerated(null);
     setErrors([]);
     setSaveError("");
-    setSaveMessage(`Loaded draft "${draft.title || "Untitled"}" for editing.`);
+    setSaveMessage(`Loaded "${draft.title || "Untitled"}" for editing.`);
     setAiContextOpen(true);
     setLoadedDraft(true);
+    window.requestAnimationFrame(() => {
+      editorSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleDeleteDraft = async (draft: SavedVideoIdea) => {
@@ -1119,7 +1123,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
                       className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-100 transition hover:border-violet-200/70 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Pencil className="size-4" />
-                      Edit Draft
+                      Edit Video
                     </button>
                     {draft.status === "draft" ? (
                       <>
@@ -1152,14 +1156,14 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
       </section>
 
       <div className="grid gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
-      <section className="rounded-[1.5rem] border border-white/10 bg-black/55 p-6 shadow-[0_0_42px_rgba(124,58,237,0.18)] backdrop-blur-xl">
+      <section ref={editorSectionRef} className="scroll-mt-28 rounded-[1.5rem] border border-white/10 bg-black/55 p-6 shadow-[0_0_42px_rgba(124,58,237,0.18)] backdrop-blur-xl">
         <div className="flex items-center gap-3 text-violet-200">
           <FileJson className="size-5" />
           <p className="text-xs font-bold uppercase tracking-[0.24em]">JSON Builder</p>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <h2 className="font-display text-2xl font-bold uppercase tracking-[0.14em] text-white">
-            Prepare a new video entry
+            {loadedDraft ? "Edit selected video" : "Prepare a new video entry"}
           </h2>
           <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${
             formState.status === "published"
