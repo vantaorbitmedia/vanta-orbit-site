@@ -4,12 +4,20 @@ import NewsletterSignup from "@/components/NewsletterSignup";
 import SectionHeader from "@/components/SectionHeader";
 import TopicCard from "@/components/TopicCard";
 import VideoCard from "@/components/VideoCard";
-import { articles, featuredVideo, latestVideos, topics } from "@/lib/content";
+import { articles, topics } from "@/lib/content";
+import { getPublicFeaturedVideo, getPublicLatestVideos } from "@/lib/public-content";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const [featuredVideo, latestVideos] = await Promise.all([
+    getPublicFeaturedVideo(),
+    getPublicLatestVideos(),
+  ]);
+
   return (
     <main className="home-page">
-      <Hero featuredVideo={featuredVideo} />
+      {featuredVideo ? <Hero featuredVideo={featuredVideo} /> : null}
 
       <section id="explore-by-topic" className="relative z-0 -mt-40 mx-auto max-w-7xl px-4 pb-20 pt-52 sm:px-6 lg:px-8">
         <SectionHeader

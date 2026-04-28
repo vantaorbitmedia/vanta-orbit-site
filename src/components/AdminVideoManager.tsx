@@ -875,16 +875,17 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
   const validateRequiredFields = (status: ContentStatus) => {
     const nextErrors: string[] = [];
 
-    if (!formState.title.trim()) nextErrors.push("Title is required.");
-    if (!formState.date) nextErrors.push("Published date is required.");
-    if (!formState.description.trim()) nextErrors.push("Description is required.");
-    if (!formState.youtubeUrl.trim()) nextErrors.push("YouTube URL is required.");
     if (!formState.type) nextErrors.push("Content type is required.");
     if (!formState.topic) nextErrors.push("Category is required.");
-    if (status === "published" && !(formState.thumbnail.trim() || thumbnailOptions[0])) {
-      nextErrors.push("Thumbnail is required before publishing.");
+
+    if (status === "published") {
+      if (!formState.title.trim()) nextErrors.push("Title is required.");
+      if (!formState.date) nextErrors.push("Published date is required.");
+      if (!formState.description.trim()) nextErrors.push("Description is required.");
+      if (!formState.youtubeUrl.trim() || !videoId) {
+        nextErrors.push("You must add a video link before publishing");
+      }
     }
-    if (!videoId) nextErrors.push("Enter a valid YouTube URL so a video ID can be extracted.");
 
     return nextErrors;
   };
@@ -894,7 +895,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
 
     setErrors(nextErrors);
 
-    if (nextErrors.length > 0 || !videoId) {
+    if (nextErrors.length > 0) {
       setGenerated(null);
       return;
     }
@@ -908,7 +909,7 @@ export default function AdminVideoManager({ aiModels }: { aiModels: string[] }) 
     setSaveError("");
     setSaveMessage("");
 
-    if (nextErrors.length > 0 || !videoId) {
+    if (nextErrors.length > 0) {
       setGenerated(null);
       return;
     }

@@ -179,6 +179,10 @@ function buildVideoId(title: string, publishedDate: string) {
   return `${slug}-${compactDate}`;
 }
 
+function buildDraftId() {
+  return `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function validate(
   payload: Required<Pick<VideoSavePayload, "title" | "description" | "videoUrl" | "publishedDate">> & {
     contentType?: VideoType;
@@ -189,16 +193,19 @@ function validate(
 ) {
   const errors: string[] = [];
 
-  if (!payload.title) errors.push("Title is required.");
-  if (!payload.description) errors.push("Description is required.");
-  if (!payload.videoUrl) errors.push("URL is required.");
-  if (!payload.publishedDate) errors.push("Published date is required.");
-  if (!payload.contentType || !validTypes.has(payload.contentType)) errors.push("Content type is required.");
-  if (!payload.category || !validTopics.has(payload.category)) errors.push("Category is required.");
-  if (status === "published" && !payload.thumbnail) errors.push("Thumbnail is required before publishing.");
-
   const videoId = extractYouTubeId(payload.videoUrl);
-  if (!videoId) errors.push("Enter a valid YouTube/video URL.");
+
+  if (status === "published") {
+    if (!payload.title) errors.push("Title is required.");
+    if (!payload.description) errors.push("Description is required.");
+    if (!payload.publishedDate) errors.push("Published date is required.");
+    if (!payload.contentType || !validTypes.has(payload.contentType)) errors.push("Content type is required.");
+    if (!payload.category || !validTopics.has(payload.category)) errors.push("Category is required.");
+    if (!payload.videoUrl || !videoId) errors.push("You must add a video link before publishing");
+  } else {
+    if (payload.contentType && !validTypes.has(payload.contentType)) errors.push("Content type is invalid.");
+    if (payload.category && !validTopics.has(payload.category)) errors.push("Category is invalid.");
+  }
 
   return { errors, videoId };
 }
@@ -209,7 +216,7 @@ function toRecord(body: VideoSavePayload, status: ContentStatus, existing?: RawV
   const videoUrl = asCleanString(body.videoUrl);
   const publishedDate = asCleanString(body.publishedDate);
   const videoId = extractYouTubeId(asCleanString(body.videoId) || videoUrl);
-  const id = asCleanString(body.id) || existing?.id || buildVideoId(title, publishedDate);
+  const id = asCleanString(body.id) || existing?.id || (title ? buildVideoId(title, publishedDate) : buildDraftId());
   const now = new Date().toISOString();
   const thumbnail = asCleanString(body.thumbnail) || getYouTubeThumbnails(videoId)[0] || "";
   const relatedArticleSlug = asCleanString(body.relatedArticleSlug)
@@ -218,7 +225,7 @@ function toRecord(body: VideoSavePayload, status: ContentStatus, existing?: RawV
   return {
     ...existing,
     id,
-    slug: asCleanString(body.slug) || slugify(title),
+    slug: asCleanString(body.slug) || slugify(title) || id,
     status,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
@@ -637,6 +644,27 @@ export async function publishDraftVideo(id: string) {
   }
 
   const supabase = getSupabaseAdminClient();
+  const { data: existingDraft, error: selectError } = await supabase
+    .from("videos")
+    .select(expectedVideoColumns.join(","))
+    .eq("id", id)
+    .eq("status", "draft")
+    .maybeSingle();
+
+  if (selectError) {
+    console.error("[supabase] draft publish lookup failed", { id, error: selectError.message });
+    throw new Error(selectError.message);
+  }
+
+  if (!existingDraft) {
+    throw new Error("Draft not found.");
+  }
+
+  const draft = existingDraft as unknown as SupabaseVideoRow;
+  if (!asCleanString(draft.video_url) || !extractYouTubeId(asCleanString(draft.video_url))) {
+    throw new Error("You must add a video link before publishing");
+  }
+
   const { data, error } = await supabase
     .from("videos")
     .update({ status: "published" })
@@ -681,19 +709,23 @@ export async function persistVideo(body: VideoSavePayload, requestedStatus: Cont
   const description = asCleanString(body.description);
   const videoUrl = asCleanString(body.videoUrl);
   const publishedDate = asCleanString(body.publishedDate);
-  const contentType = body.contentType;
-  const category = body.category;
+  const contentType = body.contentType && validTypes.has(body.contentType) ? body.contentType : undefined;
+  const category = body.category && validTopics.has(body.category) ? body.category : undefined;
   const thumbnail = asCleanString(body.thumbnail);
   const { errors } = validate(
     { title, description, videoUrl, publishedDate, contentType, category, thumbnail },
     status,
   );
 
-  if (errors.length > 0 || !contentType || !category) {
+  if (errors.length > 0 || (status === "published" && (!contentType || !category))) {
     return { ok: false as const, errors };
   }
 
-  const record = toRecord({ ...body, contentType, category }, status);
+  const record = toRecord({
+    ...body,
+    contentType: contentType ?? "short",
+    category: category ?? "moon",
+  }, status);
   let supabaseVideo: PersistedSupabaseVideo | null = null;
   let deepDive = null;
   let supabaseError = "";
@@ -728,7 +760,11 @@ export async function persistVideo(body: VideoSavePayload, requestedStatus: Cont
 
   if (!supabaseVideo && canWriteJsonMirror()) {
     try {
-      jsonRecord = await saveJsonMirror({ ...body, contentType, category }, status);
+      jsonRecord = await saveJsonMirror({
+        ...body,
+        contentType: record.contentType,
+        category: record.category,
+      }, status);
     } catch (error) {
       jsonError = error instanceof Error ? error.message : "JSON fallback save failed.";
       console.error("[video-persistence] JSON fallback failed", {

@@ -7,13 +7,16 @@ import {
   archiveContent,
   contentTopics,
   topics,
+  type ContentItem,
   type ContentTopic,
 } from "@/lib/content";
 
 export default function ExploreHub({
   initialTopic,
+  items = archiveContent,
 }: {
   initialTopic?: string;
+  items?: ContentItem[];
 }) {
   const mappedInitialTopic = contentTopics.some((topic) => topic.value === initialTopic)
     ? (initialTopic as ContentTopic)
@@ -26,7 +29,7 @@ export default function ExploreHub({
   const results = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
-    return archiveContent.filter((item) => {
+    return items.filter((item) => {
       const matchesTopic = activeTopic === "all" || item.topic === activeTopic;
       const matchesType = selectedType === "all" || item.type === selectedType;
       const searchText = [
@@ -43,8 +46,8 @@ export default function ExploreHub({
       const matchesQuery = !normalizedQuery || searchText.includes(normalizedQuery);
       return matchesTopic && matchesType && matchesQuery;
     });
-  }, [activeTopic, selectedType, searchQuery]);
-  const hasContent = archiveContent.length > 0;
+  }, [activeTopic, items, selectedType, searchQuery]);
+  const hasContent = items.length > 0;
 
   return (
     <div>

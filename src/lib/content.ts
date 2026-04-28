@@ -117,6 +117,7 @@ export type ContentItem = {
   image: string;
   youtubeUrl: string;
   youtubeId?: string;
+  videoType?: VideoType;
   relatedArticleSlug?: string;
   relatedVideoId?: string;
   relatedVideoSlug?: string;
@@ -383,6 +384,10 @@ function sortByNewestDate<T extends { date: string }>(items: T[]) {
   return [...items].sort((left, right) => toDateValue(right.date) - toDateValue(left.date));
 }
 
+export function sortContentByNewestDate<T extends { date: string }>(items: T[]) {
+  return sortByNewestDate(items);
+}
+
 function normalizeTopic(topic: string) {
   return contentTopicSet.has(topic as ContentTopic)
     ? (topic as ContentTopic)
@@ -523,6 +528,10 @@ function normalizeVideo(raw: RawVideoItem): VideoItem {
   };
 }
 
+export function normalizeVideoItem(raw: RawVideoItem): VideoItem {
+  return normalizeVideo(raw);
+}
+
 const normalizedVideoItems = sortByNewestDate(
   (videosData as RawVideoItem[]).map(normalizeVideo),
 );
@@ -591,6 +600,7 @@ function toVideoContentItem(video: VideoItem): ContentItem {
     image: video.thumbnail,
     youtubeUrl: video.embedUrl,
     youtubeId: video.videoId,
+    videoType: video.type,
     relatedArticleSlug: video.relatedArticleSlug,
     tags: video.tags,
     series: video.series,

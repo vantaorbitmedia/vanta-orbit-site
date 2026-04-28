@@ -14,6 +14,9 @@ export async function POST(_request: Request, context: RouteContext<"/admin/api/
   } catch (error) {
     const message = error instanceof Error ? error.message : "Draft could not be published.";
     console.error("[admin-api] draft publish failed", { error: message });
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: message === "You must add a video link before publishing" ? 400 : 500 },
+    );
   }
 }

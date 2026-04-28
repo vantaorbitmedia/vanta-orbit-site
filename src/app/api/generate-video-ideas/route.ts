@@ -26,6 +26,39 @@ type StructuredVideoIdeas = {
   }>;
   leonardoPrompts: string[];
   runwayPrompts: string[];
+  visualProductionPlan: Array<{
+    scene: string;
+    timestamp: string;
+    purpose: string;
+    leonardoPrompt: string;
+    generate: string;
+    suggestedVariations: string[];
+    editInstructions: string;
+    textOverlay: string;
+  }>;
+  runwayAnimationPrompts: Array<{
+    scene: string;
+    timestamp: string;
+    inputImageReference: string;
+    durationSuggestion: string;
+    runwayPrompt: string;
+    avoid: string[];
+    transition: string;
+  }>;
+  seriesParts: Array<{
+    seriesName: string;
+    partNumber: string;
+    title: string;
+    hook: string;
+    script: string[];
+    timedSceneBreakdown: string[];
+    visualProductionPlan: string[];
+    leonardoPrompts: string[];
+    runwayAnimationPrompts: string[];
+    textOverlays: string[];
+    cta: string;
+  }>;
+  postingPlan: string[];
   captions: string[];
   hashtags: string[];
   thumbnailTextIdeas: string[];
@@ -51,6 +84,10 @@ const videoIdeasJsonSchema = {
       "sceneBySceneVisualPlan",
       "leonardoPrompts",
       "runwayPrompts",
+      "visualProductionPlan",
+      "runwayAnimationPrompts",
+      "seriesParts",
+      "postingPlan",
       "captions",
       "hashtags",
       "thumbnailTextIdeas",
@@ -102,6 +139,63 @@ const videoIdeasJsonSchema = {
       },
       leonardoPrompts: { type: "array", items: { type: "string" } },
       runwayPrompts: { type: "array", items: { type: "string" } },
+      visualProductionPlan: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["scene", "timestamp", "purpose", "leonardoPrompt", "generate", "suggestedVariations", "editInstructions", "textOverlay"],
+          properties: {
+            scene: { type: "string" },
+            timestamp: { type: "string" },
+            purpose: { type: "string" },
+            leonardoPrompt: { type: "string" },
+            generate: { type: "string" },
+            suggestedVariations: { type: "array", items: { type: "string" } },
+            editInstructions: { type: "string" },
+            textOverlay: { type: "string" },
+          },
+        },
+      },
+      runwayAnimationPrompts: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["scene", "timestamp", "inputImageReference", "durationSuggestion", "runwayPrompt", "avoid", "transition"],
+          properties: {
+            scene: { type: "string" },
+            timestamp: { type: "string" },
+            inputImageReference: { type: "string" },
+            durationSuggestion: { type: "string" },
+            runwayPrompt: { type: "string" },
+            avoid: { type: "array", items: { type: "string" } },
+            transition: { type: "string" },
+          },
+        },
+      },
+      seriesParts: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["seriesName", "partNumber", "title", "hook", "script", "timedSceneBreakdown", "visualProductionPlan", "leonardoPrompts", "runwayAnimationPrompts", "textOverlays", "cta"],
+          properties: {
+            seriesName: { type: "string" },
+            partNumber: { type: "string" },
+            title: { type: "string" },
+            hook: { type: "string" },
+            script: { type: "array", items: { type: "string" } },
+            timedSceneBreakdown: { type: "array", items: { type: "string" } },
+            visualProductionPlan: { type: "array", items: { type: "string" } },
+            leonardoPrompts: { type: "array", items: { type: "string" } },
+            runwayAnimationPrompts: { type: "array", items: { type: "string" } },
+            textOverlays: { type: "array", items: { type: "string" } },
+            cta: { type: "string" },
+          },
+        },
+      },
+      postingPlan: { type: "array", items: { type: "string" } },
       captions: { type: "array", items: { type: "string" } },
       hashtags: { type: "array", items: { type: "string" } },
       thumbnailTextIdeas: { type: "array", items: { type: "string" } },
@@ -196,6 +290,74 @@ function normalizeScenes(value: unknown): StructuredVideoIdeas["sceneBySceneVisu
     .filter((item): item is StructuredVideoIdeas["sceneBySceneVisualPlan"][number] => Boolean(item));
 }
 
+function normalizeVisualProductionPlan(value: unknown): StructuredVideoIdeas["visualProductionPlan"] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const entry = item as Record<string, unknown>;
+
+      return {
+        scene: typeof entry.scene === "string" ? entry.scene : "",
+        timestamp: typeof entry.timestamp === "string" ? entry.timestamp : "",
+        purpose: typeof entry.purpose === "string" ? entry.purpose : "",
+        leonardoPrompt: typeof entry.leonardoPrompt === "string" ? entry.leonardoPrompt : "",
+        generate: typeof entry.generate === "string" ? entry.generate : "1 image per scene.",
+        suggestedVariations: toStringArray(entry.suggestedVariations).slice(0, 3),
+        editInstructions: typeof entry.editInstructions === "string" ? entry.editInstructions : "",
+        textOverlay: typeof entry.textOverlay === "string" ? entry.textOverlay : "",
+      };
+    })
+    .filter((item): item is StructuredVideoIdeas["visualProductionPlan"][number] => Boolean(item));
+}
+
+function normalizeRunwayAnimationPrompts(value: unknown): StructuredVideoIdeas["runwayAnimationPrompts"] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const entry = item as Record<string, unknown>;
+
+      return {
+        scene: typeof entry.scene === "string" ? entry.scene : "",
+        timestamp: typeof entry.timestamp === "string" ? entry.timestamp : "",
+        inputImageReference: typeof entry.inputImageReference === "string" ? entry.inputImageReference : "",
+        durationSuggestion: typeof entry.durationSuggestion === "string" ? entry.durationSuggestion : "",
+        runwayPrompt: typeof entry.runwayPrompt === "string" ? entry.runwayPrompt : "",
+        avoid: toStringArray(entry.avoid),
+        transition: typeof entry.transition === "string" ? entry.transition : "",
+      };
+    })
+    .filter((item): item is StructuredVideoIdeas["runwayAnimationPrompts"][number] => Boolean(item));
+}
+
+function normalizeSeriesParts(value: unknown): StructuredVideoIdeas["seriesParts"] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const entry = item as Record<string, unknown>;
+
+      return {
+        seriesName: typeof entry.seriesName === "string" ? entry.seriesName : "",
+        partNumber: typeof entry.partNumber === "string" ? entry.partNumber : "",
+        title: typeof entry.title === "string" ? entry.title : "",
+        hook: typeof entry.hook === "string" ? entry.hook : "",
+        script: toStringArray(entry.script),
+        timedSceneBreakdown: toStringArray(entry.timedSceneBreakdown),
+        visualProductionPlan: toStringArray(entry.visualProductionPlan),
+        leonardoPrompts: toStringArray(entry.leonardoPrompts),
+        runwayAnimationPrompts: toStringArray(entry.runwayAnimationPrompts),
+        textOverlays: toStringArray(entry.textOverlays),
+        cta: typeof entry.cta === "string" ? entry.cta : "",
+      };
+    })
+    .filter((item): item is StructuredVideoIdeas["seriesParts"][number] => Boolean(item));
+}
+
 function normalizeStructuredIdeas(value: unknown): StructuredVideoIdeas | null {
   if (!value || typeof value !== "object") return null;
 
@@ -224,6 +386,10 @@ function normalizeStructuredIdeas(value: unknown): StructuredVideoIdeas | null {
     sceneBySceneVisualPlan: normalizeScenes(raw.sceneBySceneVisualPlan),
     leonardoPrompts: toStringArray(raw.leonardoPrompts),
     runwayPrompts: toStringArray(raw.runwayPrompts),
+    visualProductionPlan: normalizeVisualProductionPlan(raw.visualProductionPlan),
+    runwayAnimationPrompts: normalizeRunwayAnimationPrompts(raw.runwayAnimationPrompts),
+    seriesParts: normalizeSeriesParts(raw.seriesParts),
+    postingPlan: toStringArray(raw.postingPlan),
     captions: toStringArray(raw.captions),
     hashtags: toStringArray(raw.hashtags),
     thumbnailTextIdeas: toStringArray(raw.thumbnailTextIdeas),
@@ -271,7 +437,7 @@ Do not include timings beyond ${duration}. For 15s, the script must end at 0:15,
     const text = await generateAiText({
       instructions: "You generate structured video ideas for a private admin tool. Return valid JSON only. No markdown, no explanations, no extra text.",
       input,
-      maxOutputTokens: 6000,
+      maxOutputTokens: 12000,
       model: body.model,
       textFormat: videoIdeasJsonSchema,
     });

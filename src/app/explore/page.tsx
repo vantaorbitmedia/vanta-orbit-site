@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import ExploreHub from "@/components/ExploreHub";
 import SectionHeader from "@/components/SectionHeader";
+import { getPublicArchiveContent } from "@/lib/public-content";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Explore Topics",
@@ -12,7 +15,10 @@ export default async function ExplorePage({
 }: {
   searchParams: Promise<{ topic?: string }>;
 }) {
-  const params = await searchParams;
+  const [params, archiveContent] = await Promise.all([
+    searchParams,
+    getPublicArchiveContent(),
+  ]);
 
   return (
     <main className="space-page px-4 pb-24 pt-32 sm:px-6 lg:px-8">
@@ -22,7 +28,7 @@ export default async function ExplorePage({
           title="Explore the Archive"
           description="Filter videos and articles by topic, format, and search signal."
         />
-        <ExploreHub initialTopic={params.topic} />
+        <ExploreHub initialTopic={params.topic} items={archiveContent} />
       </section>
     </main>
   );
