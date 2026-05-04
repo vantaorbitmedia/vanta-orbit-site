@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "import:videos": "node scripts/import-videos-to-supabase.mjs",
+    "import:daily-facts": "node scripts/import-daily-space-facts-365.mjs",
     "admin:2fa": "node scripts/generate-admin-2fa.mjs"
   },
   "dependencies": {

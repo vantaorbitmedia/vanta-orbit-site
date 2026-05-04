@@ -24,6 +24,7 @@ Create a `.env.local` file in the project root for local development. Do not com
 ADMIN_PASSWORD=your_admin_password_here
 SESSION_SECRET=your_long_random_session_secret_here
 ADMIN_2FA_SECRET=your_base32_totp_secret_here
+CRON_SECRET=your_daily_cron_secret_here
 OPENAI_API_KEY=your_key_here
 LEONARDO_API_KEY=your_leonardo_api_key_here
 AI_MODEL_MAIN=gpt-5
@@ -44,6 +45,46 @@ In Vercel:
 - Keep `OPENAI_API_KEY`, `LEONARDO_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`, and `ADMIN_2FA_SECRET` server-side only
 
 Only variables prefixed with `NEXT_PUBLIC_` should ever be used in client-side code. The AI, Leonardo, and Supabase write routes read sensitive keys from `process.env` on the server and fail gracefully with a clear error if the required key is missing. The Video Manager saves to Supabase when `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, while still maintaining the local JSON fallback during rollout.
+
+## Daily Space Facts
+
+Daily Space Facts use `CRON_SECRET` to protect `/api/cron/daily-space-fact`. Vercel Cron is configured in `vercel.json` to run daily at 05:00 UTC. For Supabase production persistence, apply the migrations in `supabase/migrations`, including `002_create_daily_space_facts.sql`.
+
+Manual cron test:
+
+```bash
+curl -H "Authorization: Bearer your_daily_cron_secret_here" http://localhost:3000/api/cron/daily-space-fact
+```
+
+Add more facts by inserting rows into `daily_space_facts` in Supabase or by extending `src/data/daily-space-facts.json` for local development/import prep.
+
+### Importing 365 Daily Space Facts
+
+Place the full-year JSON array at:
+
+```bash
+src/data/daily-space-facts-365.json
+```
+
+Import it into Supabase with:
+
+```bash
+npm run import:daily-facts
+```
+
+The importer reads `.env.local` automatically and requires `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. It validates required fields, rejects accidental duplicate `publish_date` or duplicate `slug` conflicts, and upserts by `id` so rerunning is safe and does not create duplicate rows. Existing `published` or `live_short_fact` rows are preserved unless you explicitly run:
+
+```bash
+npm run import:daily-facts -- --force
+```
+
+To confirm rows in Supabase, open the `daily_space_facts` table and sort by `publish_date`, or run a count query in SQL:
+
+```sql
+select count(*) from public.daily_space_facts;
+```
+
+You can also paste/preview/import JSON from `/admin/daily-facts/import`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

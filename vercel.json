@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/daily-space-fact",
+      "schedule": "0 5 * * *"
+    }
+  ]
+}

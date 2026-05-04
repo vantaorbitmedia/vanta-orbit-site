@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BarChart3, CalendarDays, FileText, FlaskConical, FileJson, ImageIcon, PencilLine, WandSparkles } from "lucide-react";
+import { BarChart3, CalendarDays, FileText, FlaskConical, FileJson, ImageIcon, PencilLine, Sparkles, WandSparkles } from "lucide-react";
 import AdminLogoutButton from "@/components/AdminLogoutButton";
 import { requireAdminSession } from "@/lib/admin-auth";
 
@@ -29,6 +29,13 @@ const dashboardCards = [
     title: "Image Generator",
     description: "Send prompts to Leonardo from a private server-side route and inspect the raw generation response.",
     icon: ImageIcon,
+    status: "Ready now",
+  },
+  {
+    href: "/admin/daily-facts",
+    title: "Daily Space Facts",
+    description: "Schedule homepage facts, review expanded drafts, publish full posts, and export social cards.",
+    icon: Sparkles,
     status: "Ready now",
   },
   {

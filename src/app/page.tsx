@@ -2,9 +2,11 @@ import ContentCard from "@/components/ContentCard";
 import Hero from "@/components/Hero";
 import NewsletterSignup from "@/components/NewsletterSignup";
 import SectionHeader from "@/components/SectionHeader";
+import SpaceFactOfDay from "@/components/SpaceFactOfDay";
 import TopicCard from "@/components/TopicCard";
 import VideoCard from "@/components/VideoCard";
 import { articles, topics } from "@/lib/content";
+import { getHomepageDailyFact } from "@/lib/daily-space-facts";
 import { getPublicFeaturedVideo, getPublicLatestVideos } from "@/lib/public-content";
 
 export const dynamic = "force-dynamic";
@@ -14,12 +16,14 @@ export default async function Home() {
     getPublicFeaturedVideo(),
     getPublicLatestVideos(),
   ]);
+  const dailyFact = await getHomepageDailyFact();
 
   return (
     <main className="home-page">
       {featuredVideo ? <Hero featuredVideo={featuredVideo} /> : null}
+      <SpaceFactOfDay fact={dailyFact} />
 
-      <section id="explore-by-topic" className="relative z-0 -mt-40 mx-auto max-w-7xl px-4 pb-20 pt-52 sm:px-6 lg:px-8">
+      <section id="explore-by-topic" className="relative z-0 mx-auto max-w-7xl px-4 pb-20 pt-20 sm:px-6 lg:px-8">
         <SectionHeader
           eyebrow="Explore"
           title="Explore by Topic"
