@@ -165,6 +165,12 @@ type LeonardoGenerationState = {
   images: LeonardoGeneratedImage[];
 };
 
+type LeonardoModelOption = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
 type SavedGeneration = {
   id: string;
   createdAt: string;
@@ -213,6 +219,59 @@ const initialState: GeneratorState = {
 const VIDEO_MANAGER_DRAFT_KEY = "vanta-orbit-video-manager-draft";
 const HOOK_INSIGHTS_KEY = "vanta-orbit-hook-lab-insights";
 const VIDEO_IDEAS_HISTORY_KEY = "vanta-orbit-video-ideas-history";
+const DEFAULT_LEONARDO_MODEL_ID = "b2614463-296c-462a-9586-aafdb8f00e36";
+const fallbackLeonardoModels: LeonardoModelOption[] = [
+  {
+    id: DEFAULT_LEONARDO_MODEL_ID,
+    name: "Default Leonardo model",
+    description: "Used when live Leonardo model options are unavailable.",
+  },
+];
+const leonardoAspectRatios = [
+  { value: "match-video", label: "Match video", description: "Short = 9:16, long = 16:9" },
+  { value: "1:1", label: "1:1", width: 1024, height: 1024 },
+  { value: "9:16", label: "9:16", width: 832, height: 1472 },
+  { value: "16:9", label: "16:9", width: 1472, height: 832 },
+] as const;
+
+type LeonardoAspectRatio = (typeof leonardoAspectRatios)[number]["value"];
+
+async function fetchJsonWithTimeout(url: string, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const data = await response.json() as unknown;
+    return { response, data };
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function getLeonardoDimensions(output: GeneratorOutput, aspectRatio: LeonardoAspectRatio) {
+  const selectedRatio = leonardoAspectRatios.find((ratio) => ratio.value === aspectRatio);
+
+  if (selectedRatio && "width" in selectedRatio) {
+    return { width: selectedRatio.width, height: selectedRatio.height };
+  }
+
+  return output.contentType === "short"
+    ? { width: 832, height: 1472 }
+    : { width: 1472, height: 832 };
+}
+
+function getSceneLabel(index: number) {
+  return `Scene ${index + 1}`;
+}
+
+function getLeonardoPreviewAspectClass(output: GeneratorOutput, aspectRatio: LeonardoAspectRatio) {
+  if (aspectRatio === "1:1") return "aspect-square";
+  if (aspectRatio === "9:16") return "aspect-[9/16]";
+  if (aspectRatio === "16:9") return "aspect-video";
+
+  return output.contentType === "short" ? "aspect-[9/16]" : "aspect-video";
+}
 
 type HookLabInsights = {
   topHooks?: string[];
@@ -275,20 +334,6 @@ function getContentType(state: GeneratorState) {
   return state.platform === "YouTube Longform" || state.length === "1-3 min" ? "long" : "short";
 }
 
-function getFormatSpec(contentType: "short" | "long") {
-  return contentType === "short"
-    ? {
-        prefix: "Vertical 9:16",
-        resolution: "1536x2752",
-        framing: "mobile-first composition, tight centered subject, readable negative space for later text overlays",
-      }
-    : {
-        prefix: "Horizontal 16:9",
-        resolution: "2752x1536",
-        framing: "cinematic landscape composition, wider environmental detail, strong depth and scale",
-      };
-}
-
 function getScenePurpose(scene: string, index: number, total: number) {
   const lower = scene.toLowerCase();
   if (index === 0 || lower.includes("hook") || lower.includes("open")) return "Hook";
@@ -310,20 +355,43 @@ function getSceneStyle(scene: string, purpose: string) {
 }
 
 function buildLeonardoPrompt(scene: string, topic: string, state: GeneratorState, index: number, total: number) {
-  const contentType = getContentType(state);
-  const format = getFormatSpec(contentType);
   const purpose = getScenePurpose(scene, index, total);
   const style = getSceneStyle(scene, purpose);
-  const camera = contentType === "short"
-    ? "tight documentary lens, centered subject placement, close foreground depth"
-    : "wide documentary lens, layered foreground and background, expansive environmental scale";
-  const styleLanguage = style === "surface"
-    ? "physical realism, natural material variation integrated into surface, lighting interacting with the surface, physically believable colour variation"
+  const shotType = index === 0
+    ? "EXTREME CLOSE-UP"
+    : index === 1
+      ? "MEDIUM ORBIT SHOT"
+      : index === 2
+        ? "WIDE ORBIT SHOT"
+        : index === 3
+          ? "LOW ALTITUDE SURFACE SHOT"
+          : index >= total - 1
+            ? "HERO CENTERED SHOT"
+            : "CLOSE-UP";
+  const composition = index === 0
+    ? `${topic} fills 95% of frame, centered with only scientifically accurate surface, atmosphere, or horizon detail visible, no other planets visible`
+    : index === 1
+      ? `${topic} fills 60% of frame in the lower third, surrounding scale visible only if scientifically relevant, unrelated objects excluded`
+      : index === 2
+        ? `${topic} fills 45% of frame from an angled orbit view, relationship to relevant nearby object or orbital environment visible, no random planets`
+        : index === 3
+          ? `${topic} surface or near-surface region fills 85% of frame, low altitude perspective with foreground texture, background kept physically plausible`
+          : index >= total - 1
+            ? `${topic} fills 70% of frame, clean centered hero composition with negative space for later text, no other planets visible unless required by the subject`
+            : `${topic} fills 75% of frame, stable subject placement with surroundings more dramatic but scientifically controlled, unrelated objects excluded`;
+  const lighting = style === "surface"
+    ? "grazing light from upper left revealing real material texture, terminator shadow falloff, subtle rim lighting along raised terrain"
     : style === "abstract"
-      ? "controlled grounded stylisation, readable particle flows and subtle energy effects, clear scientific composition"
-      : "large-scale cinematic realism, dramatic contrast, scale, depth, atmospheric glow";
+      ? "backlighting from behind the subject with controlled rim lighting defining particle flow, no false color overlays"
+      : "strong rim light from the upper edge, backlighting from deep space, visible terminator line where scientifically appropriate";
+  const environment = "deep black space with minimal stars, no atmosphere unless physically accurate, background objects only when required for scale or scientific context";
+  const styleLanguage = style === "surface"
+    ? "natural material variation integrated into the surface, physically believable colour variation"
+    : style === "abstract"
+      ? "grounded scientific visualization with readable particle flows and plausible energy behavior"
+      : "scientifically plausible scale, orbital depth, and physically accurate visible details";
 
-  return `${format.prefix}, ${topic}, ${purpose.toLowerCase()} scene from a high-end space documentary, subject: ${scene}, environment: ${format.framing}, camera perspective: ${camera}, lighting: high contrast lighting with volumetric lighting where appropriate, mood: ${state.mood}, ${styleLanguage}, ultra realistic, cinematic, NASA documentary style, 4k, physically believable textures, subtle tonal variation, Nano Banana Pro, resolution target ${format.resolution}, no text, no labels, no diagrams, no UI overlays, no arrows, no captions.`;
+  return `${topic}, scientifically accurate appearance and consistent subject across the sequence, ${shotType} from a film director's camera plan, ${composition}, ${lighting}, ${environment}, ${purpose.toLowerCase()} scene detail: ${scene}, ${styleLanguage}, ${state.mood} documentary restraint, ultra realistic, cinematic, NASA documentary style, physically believable textures, no text, no labels, no UI, no overlays, 9:16 vertical, resolution target 1536x2752`;
 }
 
 function buildVisualProductionPlan(scenes: string[], state: GeneratorState) {
@@ -834,7 +902,7 @@ ${buildTimedScriptPromptRules(state.length)}
 - If the selected length is 15s, the final timedScriptStructure entry must end at 0:15, not 0:30.
 - sceneBySceneVisualPlan: cinematic breakdown of each scene
 - visualProductionPlan: one entry per timed scene, with the exact Scene X timestamp, Purpose, Leonardo AI Prompt, Generate, Suggested Variations, Edit Instructions, and Text Overlay fields
-- leonardoPrompts: one copy-paste-ready Leonardo prompt per scene, optimized for Nano Banana Pro
+- leonardoPrompts: return an array of cinematic, shot-based Leonardo AI prompts, one per scene
 - runwayAnimationPrompts: one image-to-video prompt per Leonardo scene, referencing "Use the Leonardo Scene X image as the input image."
 - runwayPrompts: keep this legacy field useful, but the detailed image-to-video instructions belong in runwayAnimationPrompts
 - captions: short-form captions for social media
@@ -852,9 +920,20 @@ Rules:
 - Avoid generic phrasing
 - Focus on curiosity, scale, or surprising facts
 - Make outputs feel like high-performing short-form content
-- Every Leonardo prompt must include ultra realistic, cinematic, NASA documentary style, high contrast lighting, physically believable textures, no text, no labels, no diagrams, no UI overlays, no arrows, no captions.
-- If contentType is short, start every Leonardo prompt with "Vertical 9:16" and use mobile-centered framing with resolution target 1536x2752.
-- If contentType is long, start every Leonardo prompt with "Horizontal 16:9" and use cinematic landscape framing with resolution target 2752x1536.
+- Upgrade the existing image prompt generator to produce CINEMATIC, SHOT-BASED prompts for Leonardo AI.
+- This is not a basic prompt generator anymore. It must behave like a FILM DIRECTOR planning shots.
+- Input for Leonardo prompts: video title and timed script structure with timestamps and descriptions.
+- Return leonardoPrompts as an array of prompts, one per scene.
+- Each Leonardo prompt must follow this exact structure in one clean prompt string with no bullet points: [SUBJECT + SCIENTIFIC CONTEXT], [SHOT TYPE + CAMERA POSITION], [COMPOSITION RULES], [LIGHTING], [ENVIRONMENT], [SCENE-SPECIFIC ACTION OR DETAIL], [STYLE + RENDERING], 9:16 vertical, resolution target 1536x2752.
+- Subject consistency is mandatory. The same subject must persist across all prompts. Use a precise subject phrase such as "Europa moon of Jupiter, scientifically accurate appearance" and never let the model guess the subject.
+- Each prompt must explicitly include one of these shot directions: EXTREME CLOSE-UP, CLOSE-UP, MEDIUM ORBIT SHOT, WIDE ORBIT SHOT, LOW ALTITUDE SURFACE SHOT, HERO CENTERED SHOT.
+- Each prompt must define how much of the frame the subject fills, positioning such as centered or lower third, and what is excluded, such as no other planets visible.
+- Each prompt must include rim lighting, backlighting, terminator line, or grazing light, plus the direction of light such as top, left, or behind.
+- Environment rules: describe space as deep black, minimal stars, or similarly specific. Do not include atmosphere unless physically accurate.
+- Style must always be last and must end with: ultra realistic, cinematic, NASA documentary style, physically believable textures, no text, no labels, no UI, no overlays.
+- Shot progression is mandatory when generating multiple prompts: Scene 1 Hook uses EXTREME CLOSE-UP with subject filling frame and minimal background; Scene 2 Setup pulls back slightly and introduces scale such as a nearby planet only when scientifically relevant; Scene 3 Explanation uses orbit or angled shot showing relationship between objects; Scene 4 Payoff uses LOW ALTITUDE or dynamic perspective showing surface detail or key concept; Scene 5 Twist adds environmental tension through lighting, scale, and contrast while keeping the subject stable; Scene 6 Final or CTA uses HERO CENTERED SHOT with clean composition, strong rim lighting, and negative space for text.
+- Anti-patterns: no vague words like beautiful, epic, or stunning; no generic "space scene"; no missing camera direction; no inconsistent subjects between prompts; no random planets appearing.
+- The goal is not to generate nice images. The goal is to control framing, scale, lighting, and storytelling. Every prompt should feel like instructions to a VFX artist working on a space documentary.
 - Terrain/surface scenes must avoid the words heatmap, overlay, highlight, and false color. Use integrated into surface, natural material variation, lighting interacting with the surface, physically believable colour variation.
 - Runway prompts must animate the matching Leonardo still image, preserve the original composition, keep the subject stable, no warping, no added objects, and include: Add text overlays later in CapCut or DaVinci.
 - If Multi-Part Series Mode is enabled, generate exactly ${state.numberOfParts} connected seriesParts. Each part must include seriesName, partNumber, title, hook, script, timedSceneBreakdown, visualProductionPlan, leonardoPrompts, runwayAnimationPrompts, textOverlays, and cta. Part 1 introduces the concept, middle parts continue logically, and the final part concludes.
@@ -1178,6 +1257,11 @@ export default function AdminGenerator({ videos, aiModels }: { videos: VideoItem
   const [error, setError] = useState("");
   const [selectedModel, setSelectedModel] = useState(aiModels[0] ?? "gpt-4.1-mini");
   const [generateLeonardoImages, setGenerateLeonardoImages] = useState(false);
+  const [leonardoModels, setLeonardoModels] = useState<LeonardoModelOption[]>(fallbackLeonardoModels);
+  const [selectedLeonardoModelId, setSelectedLeonardoModelId] = useState(DEFAULT_LEONARDO_MODEL_ID);
+  const [leonardoAspectRatio, setLeonardoAspectRatio] = useState<LeonardoAspectRatio>("match-video");
+  const [leonardoOptionsStatus, setLeonardoOptionsStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
+  const [leonardoOptionsMessage, setLeonardoOptionsMessage] = useState("");
   const [leonardoStates, setLeonardoStates] = useState<Record<string, LeonardoGenerationState>>({});
   const [selectedImageUrls, setSelectedImageUrls] = useState<string[]>([]);
   const [thumbnailCandidate, setThumbnailCandidate] = useState("");
@@ -1195,6 +1279,57 @@ export default function AdminGenerator({ videos, aiModels }: { videos: VideoItem
     setHistory(readGenerationHistory());
     setHookInsights(readHookLabInsights());
   }, []);
+
+  useEffect(() => {
+    if (!generateLeonardoImages || leonardoOptionsStatus !== "idle") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadLeonardoOptions = async () => {
+      setLeonardoOptionsStatus("loading");
+      setLeonardoOptionsMessage("");
+
+      try {
+        const { response, data } = await fetchJsonWithTimeout("/api/leonardo/options", 8000);
+        const result = data as {
+          models?: LeonardoModelOption[];
+          source?: "leonardo" | "fallback";
+          warning?: string;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(result.error || "Leonardo model options could not be loaded.");
+        }
+
+        const models = result.models && result.models.length > 0 ? result.models : fallbackLeonardoModels;
+
+        if (!cancelled) {
+          setLeonardoModels(models);
+          setSelectedLeonardoModelId((current) =>
+            models.some((model) => model.id === current) ? current : models[0]?.id ?? DEFAULT_LEONARDO_MODEL_ID,
+          );
+          setLeonardoOptionsStatus(result.source === "leonardo" ? "ready" : "fallback");
+          setLeonardoOptionsMessage(result.warning || "");
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setLeonardoModels(fallbackLeonardoModels);
+          setSelectedLeonardoModelId(DEFAULT_LEONARDO_MODEL_ID);
+          setLeonardoOptionsStatus("fallback");
+          setLeonardoOptionsMessage(nextError instanceof Error ? nextError.message : "Leonardo model options could not be loaded.");
+        }
+      }
+    };
+
+    void loadLeonardoOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [generateLeonardoImages, leonardoOptionsStatus]);
 
   useEffect(() => {
     if (!loading) {
@@ -1306,8 +1441,15 @@ export default function AdminGenerator({ videos, aiModels }: { videos: VideoItem
       setSelectedTitle(structuredOutput.titles[0] ?? "");
       setSelectedHook(structuredOutput.hooks[0] ?? "");
       setSelectedThumbnailText(structuredOutput.thumbnailText[0] ?? "");
+      setSelectedImageUrls([]);
+      setThumbnailCandidate("");
+      setLeonardoStates({});
       setProgress(100);
       persistGeneration(structuredOutput);
+
+      if (generateLeonardoImages) {
+        void generateAllLeonardoImages(structuredOutput);
+      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Video idea generation failed.");
     } finally {
@@ -1353,7 +1495,9 @@ export default function AdminGenerator({ videos, aiModels }: { videos: VideoItem
     setSaved(true);
   };
 
-  const generateLeonardoImage = async (prompt: string) => {
+  const generateLeonardoImage = async (prompt: string, nextOutput = output) => {
+    const dimensions = nextOutput ? getLeonardoDimensions(nextOutput, leonardoAspectRatio) : { width: 1024, height: 1024 };
+
     setLeonardoStates((current) => ({
       ...current,
       [prompt]: { status: "loading", message: "Generating image...", images: current[prompt]?.images ?? [] },
@@ -1363,7 +1507,14 @@ export default function AdminGenerator({ videos, aiModels }: { videos: VideoItem
       const response = await fetch("/api/generate-leonardo-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt,
+          negativePrompt: "text, labels, captions, UI overlays, arrows, distorted geometry, cartoon style",
+          width: dimensions.width,
+          height: dimensions.height,
+          numImages: 1,
+          modelId: selectedLeonardoModelId,
+        }),
       });
       const result = (await response.json()) as {
         images?: Array<{ id: string; url: string }>;
@@ -1402,11 +1553,12 @@ export default function AdminGenerator({ videos, aiModels }: { videos: VideoItem
     }
   };
 
-  const generateAllLeonardoImages = async () => {
-    if (!output) return;
+  const generateAllLeonardoImages = async (nextOutput?: GeneratorOutput) => {
+    const activeOutput = nextOutput ?? output;
+    if (!activeOutput) return;
 
-    for (const prompt of output.leonardoPrompts) {
-      await generateLeonardoImage(prompt);
+    for (const prompt of activeOutput.leonardoPrompts) {
+      await generateLeonardoImage(prompt, activeOutput);
     }
   };
 
@@ -1676,6 +1828,51 @@ Keep every other section useful and consistent with the same idea.`,
           <p className="text-xs leading-5 text-zinc-400">
             Leonardo image generation uses API credits. Leave this off unless you want to spend credits.
           </p>
+          {generateLeonardoImages ? (
+            <div className="grid gap-4 rounded-2xl border border-amber-300/20 bg-black/25 p-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-amber-100">
+                  Leonardo model
+                </span>
+                <select
+                  value={selectedLeonardoModelId}
+                  onChange={(event) => setSelectedLeonardoModelId(event.target.value)}
+                  className="min-h-12 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 text-white outline-none transition focus:border-amber-200/70"
+                >
+                  {leonardoModels.map((model) => (
+                    <option key={model.id} value={model.id} className="bg-[#08060f]">
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs leading-5 text-zinc-400">
+                  {leonardoOptionsStatus === "loading"
+                    ? "Loading Leonardo models..."
+                    : leonardoOptionsMessage || leonardoModels.find((model) => model.id === selectedLeonardoModelId)?.description || "Pulled from Leonardo when available."}
+                </p>
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-amber-100">
+                  Image aspect ratio
+                </span>
+                <select
+                  value={leonardoAspectRatio}
+                  onChange={(event) => setLeonardoAspectRatio(event.target.value as LeonardoAspectRatio)}
+                  className="min-h-12 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 text-white outline-none transition focus:border-amber-200/70"
+                >
+                  {leonardoAspectRatios.map((ratio) => (
+                    <option key={ratio.value} value={ratio.value} className="bg-[#08060f]">
+                      {"width" in ratio ? `${ratio.label} - ${ratio.width}x${ratio.height}` : `${ratio.label} - ${ratio.description}`}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs leading-5 text-zinc-400">
+                  Applies to every scene image generated for this idea.
+                </p>
+              </label>
+            </div>
+          ) : null}
         </div>
 
         <button
@@ -1991,21 +2188,29 @@ Keep every other section useful and consistent with the same idea.`,
                   </div>
                   <button
                     type="button"
-                    onClick={generateAllLeonardoImages}
+                    onClick={() => generateAllLeonardoImages()}
                     className="inline-flex min-h-11 items-center justify-center rounded-full bg-amber-100 px-5 text-xs font-bold uppercase tracking-[0.16em] text-amber-950 transition hover:bg-white"
                   >
                     Generate Images for All Prompts
                   </button>
                 </div>
 
-                <div className="mt-5 space-y-4">
-                  {output.leonardoPrompts.map((prompt) => {
+                <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                  {output.leonardoPrompts.map((prompt, index) => {
                     const state = leonardoStates[prompt] ?? { status: "idle", message: "", images: [] };
+                    const sceneLabel = getSceneLabel(index);
 
                     return (
-                      <div key={prompt} className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                      <div key={prompt} className="overflow-hidden rounded-2xl border border-white/10 bg-black/35">
+                        <div className="border-b border-white/10 bg-white/[0.03] px-4 py-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-100">{sceneLabel}</p>
+                        </div>
+                        <div className="p-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <p className="text-sm leading-6 text-zinc-200">{prompt}</p>
+                          <p className="text-sm leading-6 text-zinc-200">
+                            <span className="font-semibold text-white">Prompt: </span>
+                            {prompt}
+                          </p>
                           <div className="flex shrink-0 flex-wrap gap-2">
                             <CopyButton text={prompt} />
                             <button
@@ -2023,52 +2228,71 @@ Keep every other section useful and consistent with the same idea.`,
                             {state.message}
                           </p>
                         ) : null}
+
+                        {state.status === "loading" ? (
+                          <div className="mt-4 flex min-h-52 items-center justify-center rounded-2xl border border-dashed border-amber-200/20 bg-amber-400/5 p-6 text-center">
+                            <div>
+                              <RefreshCw className="mx-auto size-6 animate-spin text-amber-100" />
+                              <p className="mt-3 text-xs font-bold uppercase tracking-[0.18em] text-amber-100">
+                                Generating {sceneLabel}
+                              </p>
+                            </div>
+                          </div>
+                        ) : state.images.length > 0 ? (
+                          <div className="mt-4 grid gap-4">
+                            {state.images.map((image) => (
+                              <div key={image.url} className="overflow-hidden rounded-2xl border border-white/10 bg-black/45">
+                                <a href={image.url} target="_blank" rel="noreferrer" className="block">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={image.url}
+                                    alt={`${sceneLabel} Leonardo result`}
+                                    className={`${getLeonardoPreviewAspectClass(output, leonardoAspectRatio)} w-full object-cover`}
+                                  />
+                                </a>
+                                <div className="flex flex-wrap gap-2 p-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSelectedImage(image.url)}
+                                    className={`inline-flex min-h-9 items-center rounded-full px-3 text-[10px] font-bold uppercase tracking-[0.14em] ${
+                                      selectedImageUrls.includes(image.url)
+                                        ? "bg-emerald-200 text-emerald-950"
+                                        : "border border-white/15 text-white"
+                                    }`}
+                                  >
+                                    {selectedImageUrls.includes(image.url) ? "Saved" : "Save to Manager"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setThumbnailCandidate(image.url);
+                                      if (!selectedImageUrls.includes(image.url)) {
+                                        setSelectedImageUrls((current) => [...current, image.url]);
+                                      }
+                                    }}
+                                    className={`inline-flex min-h-9 items-center rounded-full px-3 text-[10px] font-bold uppercase tracking-[0.14em] ${
+                                      thumbnailCandidate === image.url
+                                        ? "bg-violet-200 text-violet-950"
+                                        : "border border-white/15 text-white"
+                                    }`}
+                                  >
+                                    {thumbnailCandidate === image.url ? "Thumbnail" : "Mark Thumbnail"}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-4 flex min-h-52 items-center justify-center rounded-2xl border border-dashed border-white/12 bg-white/[0.03] p-6 text-center">
+                            <p className="max-w-sm text-xs leading-5 text-zinc-400">
+                              {generateLeonardoImages ? `${sceneLabel} will appear here when generated.` : "Enable Leonardo images to generate this scene."}
+                            </p>
+                          </div>
+                        )}
+                        </div>
                       </div>
                     );
                   })}
-                </div>
-
-                <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {Object.values(leonardoStates).flatMap((state) => state.images).map((image) => (
-                    <div key={image.url} className="overflow-hidden rounded-2xl border border-white/10 bg-black/45">
-                      <a href={image.url} target="_blank" rel="noreferrer" className="block">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={image.url} alt="" className="aspect-video w-full object-cover" />
-                      </a>
-                      <div className="space-y-3 p-4">
-                        <p className="line-clamp-3 text-xs leading-5 text-zinc-300">{image.prompt}</p>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleSelectedImage(image.url)}
-                            className={`inline-flex min-h-9 items-center rounded-full px-3 text-[10px] font-bold uppercase tracking-[0.14em] ${
-                              selectedImageUrls.includes(image.url)
-                                ? "bg-emerald-200 text-emerald-950"
-                                : "border border-white/15 text-white"
-                            }`}
-                          >
-                            {selectedImageUrls.includes(image.url) ? "Saved" : "Save to Manager"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setThumbnailCandidate(image.url);
-                              if (!selectedImageUrls.includes(image.url)) {
-                                setSelectedImageUrls((current) => [...current, image.url]);
-                              }
-                            }}
-                            className={`inline-flex min-h-9 items-center rounded-full px-3 text-[10px] font-bold uppercase tracking-[0.14em] ${
-                              thumbnailCandidate === image.url
-                                ? "bg-violet-200 text-violet-950"
-                                : "border border-white/15 text-white"
-                            }`}
-                          >
-                            {thumbnailCandidate === image.url ? "Thumbnail" : "Mark Thumbnail"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </section>
             ) : null}

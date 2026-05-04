@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BarChart3, CalendarDays, FileText, FlaskConical, FileJson, PencilLine, WandSparkles } from "lucide-react";
+import { BarChart3, CalendarDays, FileText, FlaskConical, FileJson, ImageIcon, PencilLine, WandSparkles } from "lucide-react";
 import AdminLogoutButton from "@/components/AdminLogoutButton";
 import { requireAdminSession } from "@/lib/admin-auth";
 
@@ -22,6 +22,13 @@ const dashboardCards = [
     title: "Video Manager",
     description: "Generate structured video and deep-dive JSON, preview entries, and validate metadata before you paste.",
     icon: FileJson,
+    status: "Ready now",
+  },
+  {
+    href: "/admin/image-generator",
+    title: "Image Generator",
+    description: "Send prompts to Leonardo from a private server-side route and inspect the raw generation response.",
+    icon: ImageIcon,
     status: "Ready now",
   },
   {

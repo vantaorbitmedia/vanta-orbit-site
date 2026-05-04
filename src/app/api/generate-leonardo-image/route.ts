@@ -21,24 +21,51 @@ type LeonardoGenerationResponse = {
 };
 
 const LEONARDO_BASE_URL = "https://cloud.leonardo.ai/api/rest/v1";
+const DEFAULT_MODEL_ID = "b2614463-296c-462a-9586-aafdb8f00e36";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getLeonardoRequestBody(prompt: string) {
-  const body: Record<string, string | number> = {
+function getInteger(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function getLeonardoRequestBody(body: {
+  prompt: string;
+  negativePrompt?: string;
+  width?: unknown;
+  height?: unknown;
+  numImages?: unknown;
+  modelId?: unknown;
+}) {
+  const requestBody: Record<string, boolean | string | number> = {
+    prompt: body.prompt,
+    modelId: typeof body.modelId === "string" && body.modelId.trim()
+      ? body.modelId.trim()
+      : process.env.LEONARDO_MODEL_ID || DEFAULT_MODEL_ID,
+    width: getInteger(body.width, 1024),
+    height: getInteger(body.height, 1024),
+    num_images: getInteger(body.numImages, 1),
+    alchemy: false,
+  };
+
+  if (body.negativePrompt) {
+    requestBody.negative_prompt = body.negativePrompt;
+  }
+
+  return requestBody;
+}
+
+function getLegacyLeonardoRequestBody(prompt: string) {
+  return {
     prompt,
+    modelId: process.env.LEONARDO_MODEL_ID || DEFAULT_MODEL_ID,
     width: Number(process.env.LEONARDO_IMAGE_WIDTH || 1024),
     height: Number(process.env.LEONARDO_IMAGE_HEIGHT || 576),
     num_images: Number(process.env.LEONARDO_NUM_IMAGES || 1),
+    alchemy: false,
   };
-
-  if (process.env.LEONARDO_MODEL_ID) {
-    body.modelId = process.env.LEONARDO_MODEL_ID;
-  }
-
-  return body;
 }
 
 async function fetchGeneration(apiKey: string, generationId: string) {
@@ -71,8 +98,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as { prompt?: string };
+  const body = (await request.json()) as {
+    prompt?: string;
+    negativePrompt?: string;
+    width?: unknown;
+    height?: unknown;
+    numImages?: unknown;
+    modelId?: unknown;
+  };
   const prompt = body.prompt?.trim();
+  const negativePrompt = body.negativePrompt?.trim();
 
   if (!prompt) {
     return NextResponse.json({ error: "Prompt is required." }, { status: 400 });
@@ -86,7 +121,11 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(getLeonardoRequestBody(prompt)),
+      body: JSON.stringify(
+        body.width || body.height || body.numImages || body.modelId || negativePrompt
+          ? getLeonardoRequestBody({ ...body, prompt, negativePrompt })
+          : getLegacyLeonardoRequestBody(prompt),
+      ),
     });
     const createData = (await createResponse.json()) as LeonardoCreateResponse;
 

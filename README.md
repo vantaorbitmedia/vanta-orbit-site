@@ -25,7 +25,7 @@ ADMIN_PASSWORD=your_admin_password_here
 SESSION_SECRET=your_long_random_session_secret_here
 ADMIN_2FA_SECRET=your_base32_totp_secret_here
 OPENAI_API_KEY=your_key_here
-LEONARDO_API_KEY=your_key_here
+LEONARDO_API_KEY=your_leonardo_api_key_here
 AI_MODEL_MAIN=gpt-5
 AI_MODEL_PREMIUM=gpt-5.2
 AI_MODEL_FAST=gpt-5-mini
@@ -38,7 +38,9 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 
 In Vercel:
 - Go to Project Settings -> Environment Variables
-- Add the same variables there for production
+- Add `LEONARDO_API_KEY` to Production and Preview environments
+- Redeploy after adding or changing `LEONARDO_API_KEY`
+- Add the same remaining variables there for production
 - Keep `OPENAI_API_KEY`, `LEONARDO_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`, and `ADMIN_2FA_SECRET` server-side only
 
 Only variables prefixed with `NEXT_PUBLIC_` should ever be used in client-side code. The AI, Leonardo, and Supabase write routes read sensitive keys from `process.env` on the server and fail gracefully with a clear error if the required key is missing. The Video Manager saves to Supabase when `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, while still maintaining the local JSON fallback during rollout.
